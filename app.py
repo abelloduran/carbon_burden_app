@@ -299,7 +299,7 @@ if st.session_state.page == "Home":
 
     st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="subtitle">An interactive dashboard for exploring projected carbon liabilities across countries, scenarios, and models.</div>',
+        '<div class="subtitle">An interactive dashboard for exploring projected carbon burdens across countries, scenarios, and models.</div>',
         unsafe_allow_html=True
     )
 
