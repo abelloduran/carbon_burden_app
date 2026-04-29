@@ -2,26 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# =============================================================================
-# Page configuration
-# =============================================================================
-
-st.set_page_config(
-    page_title="Global Carbon Burden",
-    layout="wide"
-)
-
-# =============================================================================
-# Load data
-# =============================================================================
+st.set_page_config(page_title="Global Carbon Burden", layout="wide")
 
 df = pd.read_csv("cb_dataset_final.csv")
-
 df_map = df[~df["region"].isin(["EU27", "World", "OECD"])].copy()
-
-# =============================================================================
-# Labels and dictionaries
-# =============================================================================
 
 SCENARIO_LABELS = {
     "B2C": "Below 2°C",
@@ -63,18 +47,7 @@ VARIABLE_LABELS = {
     "cb_net_mkt_value": "Net Carbon Burden / Market Value"
 }
 
-VARIABLES = [
-    "carbon_burden",
-    "carbon_burden_net",
-    "tax_burden_reduction",
-    "market_value",
-    "cb_mkt_value",
-    "cb_net_mkt_value"
-]
-
-# =============================================================================
-# Formatting functions
-# =============================================================================
+VARIABLES = list(VARIABLE_LABELS.keys())
 
 def clean_horizon_label(x):
     x = str(x)
@@ -96,30 +69,43 @@ def clean_model_label(x):
 def is_percentage_variable(variable):
     return variable in ["cb_mkt_value", "cb_net_mkt_value"]
 
-# =============================================================================
-# Session state
-# =============================================================================
-
 if "page" not in st.session_state:
     st.session_state.page = "Home"
 
 if "selected_country" not in st.session_state:
     st.session_state.selected_country = "All Countries"
 
-# =============================================================================
-# Styling
-# =============================================================================
-
 st.markdown(
     """
     <style>
-    * {
+    html, body, .stMarkdown, .stText, label, p {
         font-family: Georgia, 'Times New Roman', serif !important;
     }
 
-    html, body, [class*="css"], .stMarkdown, .stText, .stSelectbox,
-    .stDataFrame, .stPlotlyChart, label, p, span, div {
+    h1, h2, h3, h4, h5, h6 {
         font-family: Georgia, 'Times New Roman', serif !important;
+    }
+
+    div[data-testid="stMarkdownContainer"] {
+        font-family: Georgia, 'Times New Roman', serif !important;
+    }
+
+    div.stButton > button {
+        width: 100%;
+        height: 54px;
+        border-radius: 14px;
+        border: 1px solid #dddddd;
+        background-color: #f7f7f9;
+        font-size: 18px;
+        font-weight: 600;
+        color: #2b2d3a;
+        font-family: Georgia, 'Times New Roman', serif !important;
+    }
+
+    div.stButton > button:hover {
+        border: 1px solid #7b2431;
+        background-color: #f1edf0;
+        color: #7b2431;
     }
 
     .main-title {
@@ -196,23 +182,6 @@ st.markdown(
         line-height: 1.5;
     }
 
-    div.stButton > button {
-        width: 100%;
-        height: 54px;
-        border-radius: 14px;
-        border: 1px solid #dddddd;
-        background-color: #f7f7f9;
-        font-size: 18px;
-        font-weight: 600;
-        color: #2b2d3a;
-    }
-
-    div.stButton > button:hover {
-        border: 1px solid #7b2431;
-        background-color: #f1edf0;
-        color: #7b2431;
-    }
-
     .home-card button {
         height: 150px !important;
         font-size: 24px !important;
@@ -221,10 +190,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-# =============================================================================
-# Helper functions
-# =============================================================================
 
 def navigation_bar():
     col1, col2, col3, col4 = st.columns(4)
@@ -257,10 +222,7 @@ def show_filters(data):
     model_options = sorted(data["model"].dropna().unique())
     model_reverse = {clean_model_label(x): x for x in model_options}
 
-    selected_model_label = st.sidebar.selectbox(
-        "Model",
-        list(model_reverse.keys())
-    )
+    selected_model_label = st.sidebar.selectbox("Model", list(model_reverse.keys()))
     selected_model = model_reverse[selected_model_label]
 
     with st.sidebar.expander("About NGFS models"):
@@ -284,27 +246,18 @@ def show_filters(data):
     horizon_options = sorted(data["horizon_label"].dropna().unique())
     horizon_reverse = {clean_horizon_label(x): x for x in horizon_options}
 
-    selected_horizon_label = st.sidebar.selectbox(
-        "Horizon",
-        list(horizon_reverse.keys())
-    )
+    selected_horizon_label = st.sidebar.selectbox("Horizon", list(horizon_reverse.keys()))
     selected_horizon = horizon_reverse[selected_horizon_label]
 
     discount_options = sorted(data["discount_rate"].dropna().unique())
     discount_reverse = {clean_discount_label(x): x for x in discount_options}
 
-    selected_discount_label = st.sidebar.selectbox(
-        "Discount Rate",
-        list(discount_reverse.keys())
-    )
+    selected_discount_label = st.sidebar.selectbox("Discount Rate", list(discount_reverse.keys()))
     selected_discount = discount_reverse[selected_discount_label]
 
     variable_reverse = {VARIABLE_LABELS[v]: v for v in VARIABLES if v in data.columns}
 
-    selected_variable_label = st.sidebar.selectbox(
-        "Variable",
-        list(variable_reverse.keys())
-    )
+    selected_variable_label = st.sidebar.selectbox("Variable", list(variable_reverse.keys()))
     selected_variable = variable_reverse[selected_variable_label]
 
     country_options = ["All Countries"] + sorted(data["country"].dropna().unique())
@@ -342,10 +295,6 @@ def show_filters(data):
         selected_country
     )
 
-# =============================================================================
-# Home page
-# =============================================================================
-
 if st.session_state.page == "Home":
 
     st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
@@ -376,10 +325,6 @@ if st.session_state.page == "Home":
             st.session_state.page = "Table"
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
-# =============================================================================
-# Methodology page
-# =============================================================================
 
 elif st.session_state.page == "Methodology":
 
@@ -453,10 +398,6 @@ elif st.session_state.page == "Methodology":
         """,
         unsafe_allow_html=True
     )
-
-# =============================================================================
-# Map page
-# =============================================================================
 
 elif st.session_state.page == "Map":
 
@@ -537,10 +478,6 @@ elif st.session_state.page == "Map":
     except Exception:
         pass
 
-# =============================================================================
-# Table page
-# =============================================================================
-
 elif st.session_state.page == "Table":
 
     navigation_bar()
@@ -564,11 +501,7 @@ elif st.session_state.page == "Table":
 
     table_df = filtered_df.copy()
 
-    table_df = table_df.sort_values(
-        by=selected_variable,
-        ascending=False
-    ).reset_index(drop=True)
-
+    table_df = table_df.sort_values(by=selected_variable, ascending=False).reset_index(drop=True)
     table_df.insert(0, "Ranking", table_df.index + 1)
 
     keep_cols = [
@@ -597,18 +530,10 @@ elif st.session_state.page == "Table":
 
     for col in ["Carbon Burden", "Net Carbon Burden", "Tax Burden Reduction", "Market Value"]:
         if col in table_df.columns:
-            table_df[col] = table_df[col].apply(
-                lambda x: f"${x / 1e12:,.2f}T" if pd.notna(x) else ""
-            )
+            table_df[col] = table_df[col].apply(lambda x: f"${x / 1e12:,.2f}T" if pd.notna(x) else "")
 
     for col in ["Carbon Burden / Market Value", "Net Carbon Burden / Market Value"]:
         if col in table_df.columns:
-            table_df[col] = table_df[col].apply(
-                lambda x: f"{x * 100:,.2f}%" if pd.notna(x) else ""
-            )
+            table_df[col] = table_df[col].apply(lambda x: f"{x * 100:,.2f}%" if pd.notna(x) else "")
 
-    st.dataframe(
-        table_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(table_df, use_container_width=True, hide_index=True)
