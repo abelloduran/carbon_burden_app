@@ -434,7 +434,6 @@ def show_filters(data):
 # Home
 # =============================================================================
 
-
 if st.session_state.page == "Home":
 
     cp_values = sorted(get_home_scenario_values(df, "CP"), reverse=True)
@@ -446,80 +445,115 @@ if st.session_state.page == "Home":
     nz_low = format_trillion(min(nz_values)) if nz_values else "N/A"
     nz_high = format_trillion(max(nz_values)) if nz_values else "N/A"
 
+    st.markdown(
+        """
+        <style>
+        .home-subtitle-clean {
+            max-width: 950px;
+            margin: auto;
+            text-align: center;
+            font-size: 24px;
+            line-height: 1.55;
+            color: #4d4d55;
+            margin-bottom: 15px;
+        }
+
+        .scenario-wrapper {
+            max-width: 1100px;
+            margin: auto;
+            margin-top: 6px;
+            margin-bottom: 30px;
+        }
+
+        .scenario-card {
+            border: 1px solid #ddd9db;
+            border-radius: 22px;
+            padding: 42px 20px 38px 20px;
+            background-color: #fcfcfc;
+            box-shadow: 0 12px 30px rgba(20,20,30,0.04);
+            text-align: center;
+            height: 100%;
+        }
+
+        .scenario-title {
+            font-size: 18px;
+            letter-spacing: 1.8px;
+            font-weight: 700;
+            color: #7b2431;
+            margin-bottom: 26px;
+            text-transform: uppercase;
+        }
+
+        .scenario-range {
+            font-size: 42px;
+            font-weight: 700;
+            color: #252634;
+            line-height: 1.25;
+            margin-bottom: 16px;
+        }
+
+        .scenario-note {
+            font-size: 18px;
+            color: #666666;
+            font-style: italic;
+        }
+
+        .continue-button button {
+            width: 220px !important;
+            height: 64px !important;
+            font-size: 22px !important;
+            border-radius: 999px !important;
+            background: #7b2431 !important;
+            color: white !important;
+            border: 1px solid #7b2431 !important;
+        }
+
+        .continue-button button:hover {
+            background: #5f1b26 !important;
+            color: white !important;
+        }
+
+        .home-menu-subtitle {
+            max-width: 950px;
+            margin: auto;
+            text-align: center;
+            font-size: 24px;
+            line-height: 1.55;
+            color: #4d4d55;
+            margin-top: 12px;
+            margin-bottom: 62px;
+        }
+
+        .home-menu-card button {
+            height: 118px !important;
+            font-size: 26px !important;
+            font-weight: 700 !important;
+            border-radius: 24px !important;
+            background: #fcfcfc !important;
+            border: 1px solid #ddd9db !important;
+            color: #252634 !important;
+            box-shadow: 0 12px 30px rgba(20,20,30,0.045) !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .home-menu-card button:hover {
+            background: #f4eef0 !important;
+            border-color: #7b2431 !important;
+            color: #7b2431 !important;
+            transform: translateY(-2px);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     if st.session_state.home_stage == "Intro":
 
-        st.markdown(
-            """
-            <style>
-            .home-subtitle-clean {
-                max-width: 950px;
-                margin: auto;
-                text-align: center;
-                font-size: 24px;
-                line-height: 1.55;
-                color: #4d4d55;
-                margin-bottom: 15px;
-            }
-            
-
-            .scenario-wrapper {
-                max-width: 1100px;
-                margin: auto;
-                margin-top: 6px;
-                margin-bottom: 30px;
-            }
-
-            .scenario-card {
-                border: 1px solid #ddd9db;
-                border-radius: 22px;
-                padding: 42px 20px 38px 20px;
-                background-color: #fcfcfc;
-                box-shadow: 0 12px 30px rgba(20,20,30,0.04);
-                text-align: center;
-                height: 100%;
-            }
-
-            .scenario-title {
-                font-size: 18px;
-                letter-spacing: 1.8px;
-                font-weight: 700;
-                color: #7b2431;
-                margin-bottom: 26px;
-                text-transform: uppercase;
-            }
-
-            .scenario-range {
-                font-size: 42px;
-                font-weight: 700;
-                color: #252634;
-                line-height: 1.25;
-                margin-bottom: 16px;
-            }
-
-            .scenario-note {
-                font-size: 18px;
-                color: #666666;
-                font-style: italic;
-            }
-
-            .continue-clean {
-                display: flex;
-                justify-content: flex-end;
-                margin-top: 25px;
-                padding-right: 55px;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # Main title
         st.markdown(
             '<div class="main-title">Global Carbon Burden</div>',
             unsafe_allow_html=True
         )
 
-        # Subtitle
         st.markdown(
             """
             <div class="home-subtitle-clean">
@@ -530,7 +564,6 @@ if st.session_state.page == "Home":
             unsafe_allow_html=True
         )
 
-        # Scenario cards
         st.markdown('<div class="scenario-wrapper">', unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
@@ -561,7 +594,6 @@ if st.session_state.page == "Home":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Continue button
         col1, col2 = st.columns([5.3, 1.2])
 
         with col2:
@@ -580,7 +612,7 @@ if st.session_state.page == "Home":
 
         st.markdown(
             """
-            <div class="home-subtitle-clean" style="margin-bottom: 55px;">
+            <div class="home-menu-subtitle">
             Explore the methodology, compare countries on the global map,
             or examine the full world ranking.
             </div>
@@ -588,30 +620,30 @@ if st.session_state.page == "Home":
             unsafe_allow_html=True
         )
 
-        col1, col2, col3 = st.columns([1.4, 2.2, 1.4])
+        col_left, col_mid_left, col_mid, col_mid_right, col_right = st.columns(
+            [0.8, 1.45, 1.45, 1.45, 0.8]
+        )
 
-        with col2:
-
-            st.markdown('<div class="menu-button">', unsafe_allow_html=True)
-
+        with col_mid_left:
+            st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
             if st.button("Methodology", key="home_methodology"):
                 st.session_state.page = "Methodology"
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
+        with col_mid:
+            st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
             if st.button("Map", key="home_map"):
                 st.session_state.page = "Map"
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
+        with col_mid_right:
+            st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
             if st.button("World", key="home_world"):
                 st.session_state.page = "World"
                 st.rerun()
-
             st.markdown('</div>', unsafe_allow_html=True)
-
 
 
 # =============================================================================
