@@ -466,7 +466,7 @@ if st.session_state.page == "Home":
                 max-width: 1100px;
                 margin: auto;
                 margin-top: 6px;
-                margin-bottom: 70px;
+                margin-bottom: 30px;
             }
 
             .scenario-card {
