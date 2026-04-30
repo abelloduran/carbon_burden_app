@@ -458,13 +458,14 @@ if st.session_state.page == "Home":
                 font-size: 24px;
                 line-height: 1.55;
                 color: #4d4d55;
-                margin-bottom: 70px;
+                margin-bottom: 38px;
             }
+            
 
             .scenario-wrapper {
                 max-width: 1100px;
                 margin: auto;
-                margin-top: 20px;
+                margin-top: 8px;
                 margin-bottom: 70px;
             }
 
