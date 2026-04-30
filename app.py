@@ -2,10 +2,22 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# =============================================================================
+# Page configuration
+# =============================================================================
+
 st.set_page_config(page_title="Global Carbon Burden", layout="wide")
+
+# =============================================================================
+# Load data
+# =============================================================================
 
 df = pd.read_csv("cb_dataset_final.csv")
 df_map = df[~df["region"].isin(["EU27", "World", "OECD"])].copy()
+
+# =============================================================================
+# Labels
+# =============================================================================
 
 SCENARIO_LABELS = {
     "B2C": "Below 2°C",
@@ -49,6 +61,10 @@ VARIABLE_LABELS = {
 
 VARIABLES = list(VARIABLE_LABELS.keys())
 
+# =============================================================================
+# Helper functions
+# =============================================================================
+
 def clean_horizon_label(x):
     x = str(x)
     if x == "all_future_years":
@@ -69,11 +85,49 @@ def clean_model_label(x):
 def is_percentage_variable(variable):
     return variable in ["cb_mkt_value", "cb_net_mkt_value"]
 
+def format_trillion(x):
+    if pd.isna(x):
+        return ""
+    return f"${x / 1e12:,.2f}T"
+
+def format_home_values(values):
+    values = [v for v in values if pd.notna(v)]
+    if not values:
+        return "not available"
+    return ", ".join([format_trillion(v) for v in values])
+
+def get_home_scenario_values(data, scenario):
+    temp = data.copy()
+
+    temp = temp[
+        (temp["region"] == "World") &
+        (temp["scenario"] == scenario) &
+        (temp["discount_rate"].astype(float).round(4) == 0.02)
+    ].copy()
+
+    if "all_future_years" in temp["horizon_label"].astype(str).unique():
+        temp = temp[temp["horizon_label"].astype(str) == "all_future_years"].copy()
+
+    temp = temp.sort_values("model")
+
+    return temp["carbon_burden"].tolist()
+
+# =============================================================================
+# Session state
+# =============================================================================
+
 if "page" not in st.session_state:
     st.session_state.page = "Home"
 
+if "home_stage" not in st.session_state:
+    st.session_state.home_stage = "Intro"
+
 if "selected_country" not in st.session_state:
     st.session_state.selected_country = "All Countries"
+
+# =============================================================================
+# CSS
+# =============================================================================
 
 st.markdown(
     """
@@ -90,38 +144,53 @@ st.markdown(
         font-family: Georgia, 'Times New Roman', serif !important;
     }
 
-    div.stButton > button {
-        width: 100%;
-        height: 54px;
-        border-radius: 14px;
-        border: 1px solid #dddddd;
-        background-color: #f7f7f9;
-        font-size: 18px;
-        font-weight: 600;
-        color: #2b2d3a;
-        font-family: Georgia, 'Times New Roman', serif !important;
-    }
-
-    div.stButton > button:hover {
-        border: 1px solid #7b2431;
-        background-color: #f1edf0;
-        color: #7b2431;
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
     }
 
     .main-title {
         text-align: center;
-        font-size: 64px;
+        font-size: 68px;
         font-weight: 700;
-        margin-top: 60px;
-        margin-bottom: 10px;
-        color: #2b2d3a;
+        margin-top: 110px;
+        margin-bottom: 24px;
+        color: #252634;
+        letter-spacing: -1px;
     }
 
-    .subtitle {
+    .home-statement {
+        max-width: 980px;
+        margin: auto;
         text-align: center;
-        font-size: 21px;
-        color: #666;
-        margin-bottom: 60px;
+        font-size: 25px;
+        line-height: 1.55;
+        color: #4d4d55;
+    }
+
+    .home-statement strong {
+        color: #7b2431;
+        font-weight: 700;
+    }
+
+    .continue-area {
+        margin-top: 110px;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding-right: 70px;
+    }
+
+    .continue-text {
+        font-size: 22px;
+        color: #7b2431;
+        font-weight: 600;
+        margin-right: 16px;
+    }
+
+    .continue-arrow {
+        font-size: 42px;
+        color: #7b2431;
     }
 
     .page-title {
@@ -182,39 +251,104 @@ st.markdown(
         line-height: 1.5;
     }
 
-    .home-card button {
-        height: 150px !important;
-        font-size: 24px !important;
+    div.stButton > button {
+        width: 100%;
+        height: 54px;
+        border-radius: 14px;
+        border: 1px solid #d9d6d7;
+        background-color: #fafafa;
+        font-size: 18px;
+        font-weight: 600;
+        color: #2b2d3a;
+        font-family: Georgia, 'Times New Roman', serif !important;
+        transition: all 0.2s ease;
+    }
+
+    div.stButton > button:hover {
+        border: 1px solid #7b2431;
+        background-color: #f4eef0;
+        color: #7b2431;
+        transform: translateY(-1px);
+    }
+
+    .nav-wrapper {
+        padding: 12px 18px;
+        border: 1px solid #e3e0e0;
+        border-radius: 20px;
+        background: #fbfbfc;
+        box-shadow: 0 6px 18px rgba(30, 30, 40, 0.04);
+        margin-bottom: 34px;
+    }
+
+    .menu-button button {
+        height: 92px !important;
+        font-size: 28px !important;
+        border-radius: 22px !important;
+        background: #fbfbfc !important;
+        border: 1px solid #d8d3d5 !important;
+        box-shadow: 0 10px 26px rgba(30, 30, 40, 0.06);
+    }
+
+    .menu-button button:hover {
+        background: #f3ecef !important;
+        border-color: #7b2431 !important;
+        color: #7b2431 !important;
+    }
+
+    .continue-button button {
+        width: 220px !important;
+        height: 64px !important;
+        font-size: 22px !important;
+        border-radius: 999px !important;
+        background: #7b2431 !important;
+        color: white !important;
+        border: 1px solid #7b2431 !important;
+    }
+
+    .continue-button button:hover {
+        background: #5f1b26 !important;
+        color: white !important;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
+# =============================================================================
+# Navigation
+# =============================================================================
+
 def navigation_bar():
+    st.markdown('<div class="nav-wrapper">', unsafe_allow_html=True)
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        if st.button("Home"):
+        if st.button("Home", key="nav_home"):
             st.session_state.page = "Home"
+            st.session_state.home_stage = "Intro"
             st.rerun()
 
     with col2:
-        if st.button("Methodology"):
+        if st.button("Methodology", key="nav_methodology"):
             st.session_state.page = "Methodology"
             st.rerun()
 
     with col3:
-        if st.button("Map"):
+        if st.button("Map", key="nav_map"):
             st.session_state.page = "Map"
             st.rerun()
 
     with col4:
-        if st.button("Table"):
-            st.session_state.page = "Table"
+        if st.button("World", key="nav_world"):
+            st.session_state.page = "World"
             st.rerun()
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# =============================================================================
+# Filters
+# =============================================================================
 
 def show_filters(data):
     st.sidebar.title("Controls")
@@ -269,7 +403,8 @@ def show_filters(data):
     selected_country = st.sidebar.selectbox(
         "Country",
         country_options,
-        index=country_options.index(default_country)
+        index=country_options.index(default_country),
+        help="Start typing to search for a country."
     )
 
     st.session_state.selected_country = selected_country
@@ -295,36 +430,81 @@ def show_filters(data):
         selected_country
     )
 
+# =============================================================================
+# Home
+# =============================================================================
+
 if st.session_state.page == "Home":
 
-    st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="subtitle">An interactive dashboard for exploring projected carbon burdens across countries, scenarios, and models.</div>',
-        unsafe_allow_html=True
-    )
+    cp_values = get_home_scenario_values(df, "CP")
+    nz_values = get_home_scenario_values(df, "NZ")
 
-    col1, col2, col3 = st.columns(3)
+    if st.session_state.home_stage == "Intro":
 
-    with col1:
-        st.markdown('<div class="home-card">', unsafe_allow_html=True)
-        if st.button("Methodology"):
-            st.session_state.page = "Methodology"
-            st.rerun()
+        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            f"""
+            <div class="home-statement">
+            We estimate the <strong>Global Carbon Burden</strong> at 
+            <strong>{format_home_values(cp_values)}</strong> across NGFS models under 
+            <strong>Current Policies</strong>, and at 
+            <strong>{format_home_values(nz_values)}</strong> under the 
+            <strong>Net Zero 2050 Scenario</strong>.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown('<div class="continue-area">', unsafe_allow_html=True)
+        col1, col2 = st.columns([5.5, 1.2])
+        with col2:
+            st.markdown('<div class="continue-button">', unsafe_allow_html=True)
+            if st.button("Continue →", key="continue_button"):
+                st.session_state.home_stage = "Menu"
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col2:
-        st.markdown('<div class="home-card">', unsafe_allow_html=True)
-        if st.button("Map"):
-            st.session_state.page = "Map"
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    else:
 
-    with col3:
-        st.markdown('<div class="home-card">', unsafe_allow_html=True)
-        if st.button("Table"):
-            st.session_state.page = "Table"
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            """
+            <div class="home-statement" style="margin-bottom: 55px;">
+            Explore the methodology, compare countries on the global map, or examine the full world ranking table.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        col1, col2, col3 = st.columns([1.4, 2.2, 1.4])
+
+        with col2:
+            st.markdown('<div class="menu-button">', unsafe_allow_html=True)
+
+            if st.button("Methodology", key="home_methodology"):
+                st.session_state.page = "Methodology"
+                st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("Map", key="home_map"):
+                st.session_state.page = "Map"
+                st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("World", key="home_world"):
+                st.session_state.page = "World"
+                st.rerun()
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+# =============================================================================
+# Methodology
+# =============================================================================
 
 elif st.session_state.page == "Methodology":
 
@@ -398,6 +578,10 @@ elif st.session_state.page == "Methodology":
         """,
         unsafe_allow_html=True
     )
+
+# =============================================================================
+# Map
+# =============================================================================
 
 elif st.session_state.page == "Map":
 
@@ -473,16 +657,20 @@ elif st.session_state.page == "Map":
         if selected_points:
             clicked_country = selected_points[0]["hovertext"]
             st.session_state.selected_country = clicked_country
-            st.session_state.page = "Table"
+            st.session_state.page = "World"
             st.rerun()
     except Exception:
         pass
 
-elif st.session_state.page == "Table":
+# =============================================================================
+# World table
+# =============================================================================
+
+elif st.session_state.page == "World":
 
     navigation_bar()
 
-    st.markdown('<div class="page-title">Carbon Burden Ranking Table</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-title">Carbon Burden World Ranking</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-note">Monetary values are expressed in trillions of 2023 U.S. dollars. Ratio variables are expressed as percentages of corporate market value.</div>',
         unsafe_allow_html=True
@@ -500,6 +688,13 @@ elif st.session_state.page == "Table":
     ) = show_filters(df)
 
     table_df = filtered_df.copy()
+
+    with st.expander("Search country in table", expanded=False):
+        search_country = st.text_input("Type a country name", "")
+        if search_country.strip():
+            table_df = table_df[
+                table_df["country"].str.contains(search_country.strip(), case=False, na=False)
+            ].copy()
 
     table_df = table_df.sort_values(by=selected_variable, ascending=False).reset_index(drop=True)
     table_df.insert(0, "Ranking", table_df.index + 1)
