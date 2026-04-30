@@ -430,20 +430,42 @@ def show_filters(data):
         selected_country
     )
 
+
 # =============================================================================
 # Home
 # =============================================================================
 
 if st.session_state.page == "Home":
 
-    cp_values = sorted(get_home_scenario_values(df, "CP"), reverse=True)
-    nz_values = sorted(get_home_scenario_values(df, "NZ"), reverse=True)
+    def get_home_ratio_values(data, scenario):
+        temp = data.copy()
 
-    cp_low = format_trillion(min(cp_values)) if cp_values else "N/A"
-    cp_high = format_trillion(max(cp_values)) if cp_values else "N/A"
+        temp = temp[
+            (temp["region"] == "World") &
+            (temp["scenario"] == scenario) &
+            (temp["discount_rate"].astype(float).round(4) == 0.02)
+        ].copy()
 
-    nz_low = format_trillion(min(nz_values)) if nz_values else "N/A"
-    nz_high = format_trillion(max(nz_values)) if nz_values else "N/A"
+        if "all_future_years" in temp["horizon_label"].astype(str).unique():
+            temp = temp[temp["horizon_label"].astype(str) == "all_future_years"].copy()
+
+        temp = temp.sort_values("model")
+
+        return temp["cb_mkt_value"].tolist()
+
+    def format_percentage(x):
+        if pd.isna(x):
+            return "N/A"
+        return f"{x * 100:,.2f}%"
+
+    cp_values = sorted(get_home_ratio_values(df, "CP"), reverse=True)
+    b2c_values = sorted(get_home_ratio_values(df, "B2C"), reverse=True)
+
+    cp_low = format_percentage(min(cp_values)) if cp_values else "N/A"
+    cp_high = format_percentage(max(cp_values)) if cp_values else "N/A"
+
+    b2c_low = format_percentage(min(b2c_values)) if b2c_values else "N/A"
+    b2c_high = format_percentage(max(b2c_values)) if b2c_values else "N/A"
 
     st.markdown(
         """
@@ -557,8 +579,8 @@ if st.session_state.page == "Home":
         st.markdown(
             """
             <div class="home-subtitle-clean">
-            Measuring the present value of future climate damages
-            across countries, scenarios, and climate-economy models.
+            Measuring future climate damages relative to the market value
+            of the global corporate sector.
             </div>
             """,
             unsafe_allow_html=True
@@ -574,7 +596,7 @@ if st.session_state.page == "Home":
                 <div class="scenario-card">
                     <div class="scenario-title">Current Policies Scenario</div>
                     <div class="scenario-range">{cp_low} — {cp_high}</div>
-                    <div class="scenario-note">estimated global carbon burden</div>
+                    <div class="scenario-note">carbon burden as % of market value</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -584,9 +606,9 @@ if st.session_state.page == "Home":
             st.markdown(
                 f"""
                 <div class="scenario-card">
-                    <div class="scenario-title">Net Zero 2050 Scenario</div>
-                    <div class="scenario-range">{nz_low} — {nz_high}</div>
-                    <div class="scenario-note">estimated global carbon burden</div>
+                    <div class="scenario-title">Below 2°C Scenario</div>
+                    <div class="scenario-range">{b2c_low} — {b2c_high}</div>
+                    <div class="scenario-note">carbon burden as % of market value</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -644,7 +666,6 @@ if st.session_state.page == "Home":
                 st.session_state.page = "World"
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
-
 
 # =============================================================================
 # Methodology
