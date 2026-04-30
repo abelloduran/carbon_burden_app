@@ -434,46 +434,154 @@ def show_filters(data):
 # Home
 # =============================================================================
 
+
 if st.session_state.page == "Home":
 
-    cp_values = get_home_scenario_values(df, "CP")
-    nz_values = get_home_scenario_values(df, "NZ")
+    cp_values = sorted(get_home_scenario_values(df, "CP"), reverse=True)
+    nz_values = sorted(get_home_scenario_values(df, "NZ"), reverse=True)
+
+    cp_low = format_trillion(min(cp_values)) if cp_values else "N/A"
+    cp_high = format_trillion(max(cp_values)) if cp_values else "N/A"
+
+    nz_low = format_trillion(min(nz_values)) if nz_values else "N/A"
+    nz_high = format_trillion(max(nz_values)) if nz_values else "N/A"
 
     if st.session_state.home_stage == "Intro":
 
-        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
-
         st.markdown(
-            f"""
-            <div class="home-statement">
-            We estimate the <strong>Global Carbon Burden</strong> at 
-            <strong>{format_home_values(cp_values)}</strong> across NGFS models under 
-            <strong>Current Policies</strong>, and at 
-            <strong>{format_home_values(nz_values)}</strong> under the 
-            <strong>Net Zero 2050 Scenario</strong>.
+            """
+            <style>
+            .home-subtitle-clean {
+                max-width: 950px;
+                margin: auto;
+                text-align: center;
+                font-size: 24px;
+                line-height: 1.55;
+                color: #4d4d55;
+                margin-bottom: 70px;
+            }
+
+            .scenario-wrapper {
+                max-width: 1100px;
+                margin: auto;
+                margin-top: 20px;
+                margin-bottom: 70px;
+            }
+
+            .scenario-card {
+                border: 1px solid #ddd9db;
+                border-radius: 22px;
+                padding: 42px 20px 38px 20px;
+                background-color: #fcfcfc;
+                box-shadow: 0 12px 30px rgba(20,20,30,0.04);
+                text-align: center;
+                height: 100%;
+            }
+
+            .scenario-title {
+                font-size: 18px;
+                letter-spacing: 1.8px;
+                font-weight: 700;
+                color: #7b2431;
+                margin-bottom: 26px;
+                text-transform: uppercase;
+            }
+
+            .scenario-range {
+                font-size: 42px;
+                font-weight: 700;
+                color: #252634;
+                line-height: 1.25;
+                margin-bottom: 16px;
+            }
+
+            .scenario-note {
+                font-size: 18px;
+                color: #666666;
+                font-style: italic;
+            }
+
+            .continue-clean {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 25px;
+                padding-right: 55px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Main title
+        st.markdown(
+            '<div class="main-title">Global Carbon Burden</div>',
+            unsafe_allow_html=True
+        )
+
+        # Subtitle
+        st.markdown(
+            """
+            <div class="home-subtitle-clean">
+            Measuring the present value of future climate damages
+            across countries, scenarios, and climate-economy models.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.markdown('<div class="continue-area">', unsafe_allow_html=True)
-        col1, col2 = st.columns([5.5, 1.2])
+        # Scenario cards
+        st.markdown('<div class="scenario-wrapper">', unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(
+                f"""
+                <div class="scenario-card">
+                    <div class="scenario-title">Current Policies Scenario</div>
+                    <div class="scenario-range">{cp_low} — {cp_high}</div>
+                    <div class="scenario-note">estimated global carbon burden</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with col2:
+            st.markdown(
+                f"""
+                <div class="scenario-card">
+                    <div class="scenario-title">Net Zero 2050 Scenario</div>
+                    <div class="scenario-range">{nz_low} — {nz_high}</div>
+                    <div class="scenario-note">estimated global carbon burden</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Continue button
+        col1, col2 = st.columns([5.3, 1.2])
+
         with col2:
             st.markdown('<div class="continue-button">', unsafe_allow_html=True)
             if st.button("Continue →", key="continue_button"):
                 st.session_state.home_stage = "Menu"
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     else:
 
-        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="main-title">Global Carbon Burden</div>',
+            unsafe_allow_html=True
+        )
 
         st.markdown(
             """
-            <div class="home-statement" style="margin-bottom: 55px;">
-            Explore the methodology, compare countries on the global map, or examine the full world ranking table.
+            <div class="home-subtitle-clean" style="margin-bottom: 55px;">
+            Explore the methodology, compare countries on the global map,
+            or examine the full world ranking.
             </div>
             """,
             unsafe_allow_html=True
@@ -482,6 +590,7 @@ if st.session_state.page == "Home":
         col1, col2, col3 = st.columns([1.4, 2.2, 1.4])
 
         with col2:
+
             st.markdown('<div class="menu-button">', unsafe_allow_html=True)
 
             if st.button("Methodology", key="home_methodology"):
@@ -501,6 +610,8 @@ if st.session_state.page == "Home":
                 st.rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
+
+
 
 # =============================================================================
 # Methodology
