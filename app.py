@@ -116,11 +116,14 @@ def assign_display_unit(region, country):
     if region in EXCLUDE_REGIONS:
         return None
 
+    # Keep only the pre-computed EU24 aggregate in the global aggregation.
     if region == "EU24":
         return "EU24"
 
+    # Do not aggregate individual EU24 countries into EU24 again.
+    # Otherwise EU24 is double-counted.
     if region in EU24_MEMBERS:
-        return "EU24"
+        return None
 
     if region in STANDALONE_COUNTRIES:
         return country
@@ -141,6 +144,16 @@ def assign_display_unit(region, country):
         return "Rest of Europe"
 
     return "Rest of World"
+
+def assign_map_display_unit(region, country):
+    if region in EXCLUDE_REGIONS or region == "EU24":
+        return None
+
+    # For the map only, paint EU24 member countries with the EU24 aggregate value.
+    if region in EU24_MEMBERS:
+        return "EU24"
+
+    return assign_display_unit(region, country)
 
 def assign_view_type(display_unit):
     if display_unit == "EU24":
@@ -199,8 +212,27 @@ global_view_df = (
 global_view_df["cb_mkt_value"] = global_view_df["carbon_burden"] / global_view_df["mkt_value"]
 global_view_df["cb_net_mkt_value"] = global_view_df["carbon_burden_net"] / global_view_df["mkt_value"]
 
-# Map expansion: each country receives the value of its display unit
-map_base = df_clean[["region", "country", "display_unit", "view_type"]].drop_duplicates()
+# =============================================================================
+# Build map layer
+# =============================================================================
+
+map_base = df[
+    df["scenario"].isin(SCENARIO_ORDER)
+].copy()
+
+map_base["display_unit"] = map_base.apply(
+    lambda x: assign_map_display_unit(x["region"], x["country"]),
+    axis=1
+)
+
+map_base["view_type"] = map_base["display_unit"].apply(assign_view_type)
+
+map_base = (
+    map_base[
+        map_base["display_unit"].notna()
+    ][["region", "country", "display_unit", "view_type"]]
+    .drop_duplicates()
+)
 
 global_map_df = map_base.merge(
     global_view_df,
@@ -208,12 +240,31 @@ global_map_df = map_base.merge(
     how="left"
 )
 
-eu_detail_df = df_clean[
-    df_clean["region"].isin(EU24_MEMBERS)
+# =============================================================================
+# Detail datasets
+# =============================================================================
+
+eu_detail_df = df[
+    df["region"].isin(EU24_MEMBERS) &
+    df["scenario"].isin(SCENARIO_ORDER)
 ].copy()
 
-regional_detail_df = df_clean[
-    df_clean["view_type"].eq("regional_pies")
+eu_detail_df["display_unit"] = eu_detail_df["country"]
+eu_detail_df["view_type"] = "country"
+
+regional_detail_df = df[
+    df["scenario"].isin(SCENARIO_ORDER)
+].copy()
+
+regional_detail_df["display_unit"] = regional_detail_df.apply(
+    lambda x: assign_map_display_unit(x["region"], x["country"]),
+    axis=1
+)
+
+regional_detail_df["view_type"] = regional_detail_df["display_unit"].apply(assign_view_type)
+
+regional_detail_df = regional_detail_df[
+    regional_detail_df["view_type"].eq("regional_pies")
 ].copy()
 
 # =============================================================================
@@ -958,7 +1009,6 @@ elif st.session_state.page == "Results":
         ) = show_filters(global_map_df)
 
         plot_df = filtered_df.copy()
-
         plot_df, colorbar_title, hover_suffix = prepare_plot_values(plot_df, selected_variable)
 
         fig = px.choropleth(
@@ -1244,3 +1294,5 @@ elif st.session_state.page == "Results":
             col3.metric("CB / Market Value", format_percentage(row["cb_mkt_value"]))
 
             st.markdown("Firm-level results will be linked here once the firm dataset is integrated.")
+            
+            
