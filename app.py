@@ -54,7 +54,7 @@ VARIABLE_LABELS = {
     "carbon_burden": "Carbon Burden",
     "carbon_burden_net": "Net Carbon Burden",
     "tax_burden_reduction": "Tax Burden Reduction",
-    "market_value": "Market Value",
+    "mkt_value": "Market Value",
     "cb_mkt_value": "Carbon Burden / Market Value",
     "cb_net_mkt_value": "Net Carbon Burden / Market Value"
 }
@@ -775,7 +775,7 @@ elif st.session_state.page == "Map":
         plot_df[selected_variable] = plot_df[selected_variable] * 100
         colorbar_title = "%"
         hover_suffix = "%"
-    elif selected_variable in ["carbon_burden", "carbon_burden_net", "tax_burden_reduction", "market_value"]:
+    elif selected_variable in ["carbon_burden", "carbon_burden_net", "tax_burden_reduction", "mkt_value"]:
         plot_df[selected_variable] = plot_df[selected_variable] / 1e12
         colorbar_title = "Trillion 2023 USD"
         hover_suffix = " trillion 2023 USD"
@@ -870,7 +870,7 @@ elif st.session_state.page == "World":
         "carbon_burden",
         "carbon_burden_net",
         "tax_burden_reduction",
-        "market_value",
+        "mkt_value",
         "cb_mkt_value",
         "cb_net_mkt_value"
     ]
@@ -883,7 +883,7 @@ elif st.session_state.page == "World":
         "carbon_burden": "Carbon Burden",
         "carbon_burden_net": "Net Carbon Burden",
         "tax_burden_reduction": "Tax Burden Reduction",
-        "market_value": "Market Value",
+        "mkt_value": "Market Value",
         "cb_mkt_value": "Carbon Burden / Market Value",
         "cb_net_mkt_value": "Net Carbon Burden / Market Value"
     })
@@ -897,3 +897,7 @@ elif st.session_state.page == "World":
             table_df[col] = table_df[col].apply(lambda x: f"{x * 100:,.2f}%" if pd.notna(x) else "")
 
     st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+
+
+
