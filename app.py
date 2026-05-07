@@ -13,7 +13,13 @@ st.set_page_config(page_title="Global Carbon Burden", layout="wide")
 # =============================================================================
 
 df = pd.read_csv("cb_dataset_final.csv")
-df_map = df[~df["region"].isin(["EU27", "World", "OECD"])].copy()
+
+# =============================================================================
+# Standardize names
+# =============================================================================
+
+if "market_value" in df.columns and "mkt_value" not in df.columns:
+    df = df.rename(columns={"market_value": "mkt_value"})
 
 # =============================================================================
 # Labels
@@ -22,22 +28,16 @@ df_map = df[~df["region"].isin(["EU27", "World", "OECD"])].copy()
 SCENARIO_LABELS = {
     "B2C": "Below 2°C",
     "CP": "Current Policies",
-    "DT": "Delayed Transition",
-    "FW": "Fragmented World",
-    "LD": "Low Demand",
-    "NDC": "Nationally Determined Contributions",
-    "NZ": "Net Zero 2050"
+    "NDC": "Nationally Determined Contributions"
 }
 
 SCENARIO_EXPLANATIONS = {
     "B2C": "Scenario aligned with climate policies consistent with limiting warming below 2°C. Requires strong and relatively early policy action.",
     "CP": "Baseline scenario reflecting currently implemented policies only. No additional climate action beyond what is already in place.",
-    "DT": "Climate policies are delayed, then introduced abruptly. Leads to higher transition risks and more disruptive adjustments.",
-    "FW": "No coordinated global climate policy. Countries act independently, leading to high physical and transition risks.",
-    "LD": "Strong behavioral and efficiency changes reduce energy demand. Lower emissions achieved with less reliance on high carbon prices.",
-    "NDC": "Reflects countries' pledged climate targets under the Paris Agreement. Moderate transition effort, not sufficient for 2°C.",
-    "NZ": "Ambitious scenario targeting net-zero emissions globally by 2050. Requires immediate and stringent climate policies."
+    "NDC": "Reflects countries' pledged climate targets under the Paris Agreement. Moderate transition effort, not sufficient for 2°C."
 }
+
+SCENARIO_ORDER = ["CP", "NDC", "B2C"]
 
 MODEL_EXPLANATION = """
 The NGFS scenarios are produced by the Network for Greening the Financial System, 
@@ -62,6 +62,161 @@ VARIABLE_LABELS = {
 VARIABLES = list(VARIABLE_LABELS.keys())
 
 # =============================================================================
+# Territorial classification
+# =============================================================================
+
+EU24_MEMBERS = [
+    "AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN",
+    "FRA", "DEU", "GRC", "HUN", "ITA", "LVA", "LTU", "MLT", "POL",
+    "PRT", "ROU", "SVK", "SVN", "ESP", "SWE"
+]
+
+EU_EXCEPTIONS = ["LUX", "NLD", "IRL"]
+
+STANDALONE_COUNTRIES = [
+    "USA", "CHN", "IND", "RUS", "JPN", "CAN", "GBR", "AUS", "KOR",
+    "CHE", "NOR", "TUR", "SAU", "BRA", "MEX", "IDN", "ZAF",
+    "ARG", "ARE", "SGP", "TWN", "HKG"
+] + EU_EXCEPTIONS
+
+LATIN_AMERICA = [
+    "BOL", "CHL", "COL", "CRI", "CUB", "DOM", "ECU", "GTM", "HND",
+    "HTI", "JAM", "NIC", "PAN", "PER", "PRY", "SLV", "SUR", "TTO",
+    "URY", "VEN"
+]
+
+AFRICA = [
+    "AGO", "BEN", "BWA", "CIV", "CMR", "COD", "COG", "DZA", "EGY",
+    "ERI", "ETH", "GAB", "GHA", "KEN", "LBY", "MAR", "MLI", "MOZ",
+    "MUS", "NAM", "NER", "NGA", "SDN", "SEN", "SSD", "TGO", "TUN",
+    "TZA", "UGA", "ZMB", "ZWE"
+]
+
+MIDDLE_EAST = [
+    "BHR", "IRN", "IRQ", "ISR", "JOR", "KWT", "LBN", "OMN", "QAT",
+    "SYR", "YEM"
+]
+
+REST_OF_ASIA = [
+    "ARM", "AZE", "BGD", "BRN", "GEO", "KAZ", "KGZ", "KHM", "LKA",
+    "MMR", "MNG", "MYS", "NPL", "PAK", "PHL", "PRK", "THA", "TJK",
+    "TKM", "UZB", "VNM"
+]
+
+REST_OF_EUROPE = [
+    "ALB", "BIH", "BLR", "GIB", "ISL", "MDA", "MKD", "MNE", "SRB",
+    "UKR"
+]
+
+EXCLUDE_REGIONS = [
+    "World", "EU27", "OECD", "Downscaling|Countries without IEA statistics"
+]
+
+def assign_display_unit(region, country):
+    if region in EXCLUDE_REGIONS:
+        return None
+
+    if region == "EU24":
+        return "EU24"
+
+    if region in EU24_MEMBERS:
+        return "EU24"
+
+    if region in STANDALONE_COUNTRIES:
+        return country
+
+    if region in LATIN_AMERICA:
+        return "Latin America"
+
+    if region in AFRICA:
+        return "Africa"
+
+    if region in MIDDLE_EAST:
+        return "Middle East"
+
+    if region in REST_OF_ASIA:
+        return "Rest of Asia"
+
+    if region in REST_OF_EUROPE:
+        return "Rest of Europe"
+
+    return "Rest of World"
+
+def assign_view_type(display_unit):
+    if display_unit == "EU24":
+        return "eu_submap"
+
+    if display_unit in [
+        "Latin America",
+        "Africa",
+        "Middle East",
+        "Rest of Asia",
+        "Rest of Europe",
+        "Rest of World"
+    ]:
+        return "regional_pies"
+
+    return "country"
+
+df["display_unit"] = df.apply(
+    lambda x: assign_display_unit(x["region"], x["country"]),
+    axis=1
+)
+
+df["view_type"] = df["display_unit"].apply(assign_view_type)
+
+df_clean = df[
+    df["display_unit"].notna() &
+    df["scenario"].isin(SCENARIO_ORDER)
+].copy()
+
+# =============================================================================
+# Build global view dataset
+# =============================================================================
+
+SUM_COLS = [
+    "carbon_burden",
+    "carbon_burden_net",
+    "tax_burden_reduction",
+    "mkt_value"
+]
+
+GROUP_COLS = [
+    "display_unit",
+    "view_type",
+    "scenario",
+    "model",
+    "horizon_label",
+    "discount_rate"
+]
+
+global_view_df = (
+    df_clean
+    .groupby(GROUP_COLS, as_index=False)[SUM_COLS]
+    .sum()
+)
+
+global_view_df["cb_mkt_value"] = global_view_df["carbon_burden"] / global_view_df["mkt_value"]
+global_view_df["cb_net_mkt_value"] = global_view_df["carbon_burden_net"] / global_view_df["mkt_value"]
+
+# Map expansion: each country receives the value of its display unit
+map_base = df_clean[["region", "country", "display_unit", "view_type"]].drop_duplicates()
+
+global_map_df = map_base.merge(
+    global_view_df,
+    on=["display_unit", "view_type"],
+    how="left"
+)
+
+eu_detail_df = df_clean[
+    df_clean["region"].isin(EU24_MEMBERS)
+].copy()
+
+regional_detail_df = df_clean[
+    df_clean["view_type"].eq("regional_pies")
+].copy()
+
+# =============================================================================
 # Helper functions
 # =============================================================================
 
@@ -76,7 +231,7 @@ def clean_horizon_label(x):
 def clean_discount_label(x):
     try:
         return f"{float(x) * 100:.1f}%"
-    except:
+    except Exception:
         return str(x)
 
 def clean_model_label(x):
@@ -85,18 +240,27 @@ def clean_model_label(x):
 def is_percentage_variable(variable):
     return variable in ["cb_mkt_value", "cb_net_mkt_value"]
 
+def format_percentage(x):
+    if pd.isna(x):
+        return "N/A"
+    return f"{x * 100:,.2f}%"
+
 def format_trillion(x):
     if pd.isna(x):
-        return ""
+        return "N/A"
     return f"${x / 1e12:,.2f}T"
 
-def format_home_values(values):
-    values = [v for v in values if pd.notna(v)]
-    if not values:
-        return "not available"
-    return ", ".join([format_trillion(v) for v in values])
+def default_index(options, target):
+    for i, x in enumerate(options):
+        try:
+            if float(x) == float(target):
+                return i
+        except Exception:
+            if str(x) == str(target):
+                return i
+    return 0
 
-def get_home_scenario_values(data, scenario):
+def get_home_ratio_values(data, scenario):
     temp = data.copy()
 
     temp = temp[
@@ -109,8 +273,63 @@ def get_home_scenario_values(data, scenario):
         temp = temp[temp["horizon_label"].astype(str) == "all_future_years"].copy()
 
     temp = temp.sort_values("model")
+    return temp["cb_mkt_value"].tolist()
 
-    return temp["carbon_burden"].tolist()
+def make_pie_data(data, value_col, label_col="display_unit", top_n=10):
+    temp = data[[label_col, value_col]].dropna().copy()
+    temp = temp.groupby(label_col, as_index=False)[value_col].sum()
+    temp = temp.sort_values(value_col, ascending=False)
+
+    top = temp.head(top_n).copy()
+    rest = temp.iloc[top_n:].copy()
+
+    if not rest.empty:
+        rest_row = pd.DataFrame({
+            label_col: ["Rest"],
+            value_col: [rest[value_col].sum()]
+        })
+        temp = pd.concat([top, rest_row], ignore_index=True)
+    else:
+        temp = top
+
+    total = temp[value_col].sum()
+    temp["share"] = temp[value_col] / total if total != 0 else 0
+
+    return temp
+
+def get_composition_baseline(data, scenario="CP"):
+    temp = data[
+        (data["scenario"] == scenario) &
+        (data["discount_rate"].astype(float).round(4) == 0.02)
+    ].copy()
+
+    if "all_future_years" in temp["horizon_label"].astype(str).unique():
+        temp = temp[temp["horizon_label"].astype(str) == "all_future_years"].copy()
+
+    temp = (
+        temp
+        .groupby("display_unit", as_index=False)[SUM_COLS]
+        .mean()
+    )
+
+    return temp
+
+def prepare_plot_values(plot_df, selected_variable):
+    plot_df = plot_df.copy()
+
+    if is_percentage_variable(selected_variable):
+        plot_df[selected_variable] = plot_df[selected_variable] * 100
+        colorbar_title = "%"
+        hover_suffix = "%"
+    elif selected_variable in ["carbon_burden", "carbon_burden_net", "tax_burden_reduction", "mkt_value"]:
+        plot_df[selected_variable] = plot_df[selected_variable] / 1e12
+        colorbar_title = "Trillion 2023 USD"
+        hover_suffix = " trillion 2023 USD"
+    else:
+        colorbar_title = VARIABLE_LABELS.get(selected_variable, selected_variable)
+        hover_suffix = ""
+
+    return plot_df, colorbar_title, hover_suffix
 
 # =============================================================================
 # Session state
@@ -122,8 +341,11 @@ if "page" not in st.session_state:
 if "home_stage" not in st.session_state:
     st.session_state.home_stage = "Intro"
 
-if "selected_country" not in st.session_state:
-    st.session_state.selected_country = "All Countries"
+if "selected_display_unit" not in st.session_state:
+    st.session_state.selected_display_unit = None
+
+if "results_stage" not in st.session_state:
+    st.session_state.results_stage = "Global"
 
 # =============================================================================
 # CSS
@@ -153,44 +375,10 @@ st.markdown(
         text-align: center;
         font-size: 68px;
         font-weight: 700;
-        margin-top: 110px;
+        margin-top: 90px;
         margin-bottom: 24px;
         color: #252634;
         letter-spacing: -1px;
-    }
-
-    .home-statement {
-        max-width: 980px;
-        margin: auto;
-        text-align: center;
-        font-size: 25px;
-        line-height: 1.55;
-        color: #4d4d55;
-    }
-
-    .home-statement strong {
-        color: #7b2431;
-        font-weight: 700;
-    }
-
-    .continue-area {
-        margin-top: 110px;
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        padding-right: 70px;
-    }
-
-    .continue-text {
-        font-size: 22px;
-        color: #7b2431;
-        font-weight: 600;
-        margin-right: 16px;
-    }
-
-    .continue-arrow {
-        font-size: 42px;
-        color: #7b2431;
     }
 
     .page-title {
@@ -205,6 +393,130 @@ st.markdown(
         color: #444444;
         margin-bottom: 25px;
         line-height: 1.45;
+    }
+
+    .home-subtitle-clean {
+        max-width: 950px;
+        margin: auto;
+        text-align: center;
+        font-size: 24px;
+        line-height: 1.55;
+        color: #4d4d55;
+        margin-bottom: 15px;
+    }
+
+    .scenario-wrapper {
+        max-width: 1100px;
+        margin: auto;
+        margin-top: 6px;
+        margin-bottom: 30px;
+    }
+
+    .scenario-card {
+        border: 1px solid #ddd9db;
+        border-radius: 22px;
+        padding: 42px 20px 38px 20px;
+        background-color: #fcfcfc;
+        box-shadow: 0 12px 30px rgba(20,20,30,0.04);
+        text-align: center;
+        height: 100%;
+    }
+
+    .scenario-title {
+        font-size: 18px;
+        letter-spacing: 1.8px;
+        font-weight: 700;
+        color: #7b2431;
+        margin-bottom: 26px;
+        text-transform: uppercase;
+    }
+
+    .scenario-range {
+        font-size: 42px;
+        font-weight: 700;
+        color: #252634;
+        line-height: 1.25;
+        margin-bottom: 16px;
+    }
+
+    .scenario-note {
+        font-size: 18px;
+        color: #666666;
+        font-style: italic;
+    }
+
+    .home-menu-subtitle {
+        max-width: 950px;
+        margin: auto;
+        text-align: center;
+        font-size: 24px;
+        line-height: 1.55;
+        color: #4d4d55;
+        margin-top: 12px;
+        margin-bottom: 62px;
+    }
+
+    .nav-wrapper {
+        padding: 12px 18px;
+        border: 1px solid #e3e0e0;
+        border-radius: 20px;
+        background: #fbfbfc;
+        box-shadow: 0 6px 18px rgba(30, 30, 40, 0.04);
+        margin-bottom: 34px;
+    }
+
+    div.stButton > button {
+        width: 100%;
+        height: 54px;
+        border-radius: 14px;
+        border: 1px solid #d9d6d7;
+        background-color: #fafafa;
+        font-size: 18px;
+        font-weight: 600;
+        color: #2b2d3a;
+        font-family: Georgia, 'Times New Roman', serif !important;
+        transition: all 0.2s ease;
+    }
+
+    div.stButton > button:hover {
+        border: 1px solid #7b2431;
+        background-color: #f4eef0;
+        color: #7b2431;
+        transform: translateY(-1px);
+    }
+
+    .continue-button button {
+        width: 220px !important;
+        height: 64px !important;
+        font-size: 22px !important;
+        border-radius: 999px !important;
+        background: #7b2431 !important;
+        color: white !important;
+        border: 1px solid #7b2431 !important;
+    }
+
+    .continue-button button:hover {
+        background: #5f1b26 !important;
+        color: white !important;
+    }
+
+    .home-menu-card button {
+        height: 118px !important;
+        font-size: 26px !important;
+        font-weight: 700 !important;
+        border-radius: 24px !important;
+        background: #fcfcfc !important;
+        border: 1px solid #ddd9db !important;
+        color: #252634 !important;
+        box-shadow: 0 12px 30px rgba(20,20,30,0.045) !important;
+        transition: all 0.2s ease !important;
+    }
+
+    .home-menu-card button:hover {
+        background: #f4eef0 !important;
+        border-color: #7b2431 !important;
+        color: #7b2431 !important;
+        transform: translateY(-2px);
     }
 
     .header-text {
@@ -250,65 +562,6 @@ st.markdown(
         margin-top: 35px;
         line-height: 1.5;
     }
-
-    div.stButton > button {
-        width: 100%;
-        height: 54px;
-        border-radius: 14px;
-        border: 1px solid #d9d6d7;
-        background-color: #fafafa;
-        font-size: 18px;
-        font-weight: 600;
-        color: #2b2d3a;
-        font-family: Georgia, 'Times New Roman', serif !important;
-        transition: all 0.2s ease;
-    }
-
-    div.stButton > button:hover {
-        border: 1px solid #7b2431;
-        background-color: #f4eef0;
-        color: #7b2431;
-        transform: translateY(-1px);
-    }
-
-    .nav-wrapper {
-        padding: 12px 18px;
-        border: 1px solid #e3e0e0;
-        border-radius: 20px;
-        background: #fbfbfc;
-        box-shadow: 0 6px 18px rgba(30, 30, 40, 0.04);
-        margin-bottom: 34px;
-    }
-
-    .menu-button button {
-        height: 92px !important;
-        font-size: 28px !important;
-        border-radius: 22px !important;
-        background: #fbfbfc !important;
-        border: 1px solid #d8d3d5 !important;
-        box-shadow: 0 10px 26px rgba(30, 30, 40, 0.06);
-    }
-
-    .menu-button button:hover {
-        background: #f3ecef !important;
-        border-color: #7b2431 !important;
-        color: #7b2431 !important;
-    }
-
-    .continue-button button {
-        width: 220px !important;
-        height: 64px !important;
-        font-size: 22px !important;
-        border-radius: 999px !important;
-        background: #7b2431 !important;
-        color: white !important;
-        border: 1px solid #7b2431 !important;
-    }
-
-    .continue-button button:hover {
-        background: #5f1b26 !important;
-        color: white !important;
-    }
     </style>
     """,
     unsafe_allow_html=True
@@ -321,12 +574,13 @@ st.markdown(
 def navigation_bar():
     st.markdown('<div class="nav-wrapper">', unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         if st.button("Home", key="nav_home"):
             st.session_state.page = "Home"
             st.session_state.home_stage = "Intro"
+            st.session_state.results_stage = "Global"
             st.rerun()
 
     with col2:
@@ -335,13 +589,9 @@ def navigation_bar():
             st.rerun()
 
     with col3:
-        if st.button("Map", key="nav_map"):
-            st.session_state.page = "Map"
-            st.rerun()
-
-    with col4:
-        if st.button("World", key="nav_world"):
-            st.session_state.page = "World"
+        if st.button("Results", key="nav_results"):
+            st.session_state.page = "Results"
+            st.session_state.results_stage = "Global"
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -350,7 +600,7 @@ def navigation_bar():
 # Filters
 # =============================================================================
 
-def show_filters(data):
+def show_filters(data, include_variable=True):
     st.sidebar.title("Controls")
 
     model_options = sorted(data["model"].dropna().unique())
@@ -362,7 +612,7 @@ def show_filters(data):
     with st.sidebar.expander("About NGFS models"):
         st.markdown(MODEL_EXPLANATION)
 
-    scenario_options = sorted(data["scenario"].dropna().unique())
+    scenario_options = [s for s in SCENARIO_ORDER if s in data["scenario"].dropna().unique()]
     scenario_display = [f"{x} — {SCENARIO_LABELS.get(x, x)}" for x in scenario_options]
 
     selected_scenario_display = st.sidebar.selectbox("Scenario", scenario_display)
@@ -380,34 +630,42 @@ def show_filters(data):
     horizon_options = sorted(data["horizon_label"].dropna().unique())
     horizon_reverse = {clean_horizon_label(x): x for x in horizon_options}
 
-    selected_horizon_label = st.sidebar.selectbox("Horizon", list(horizon_reverse.keys()))
+    default_horizon_index = 0
+    if "All Future Years" in horizon_reverse.keys():
+        default_horizon_index = list(horizon_reverse.keys()).index("All Future Years")
+
+    selected_horizon_label = st.sidebar.selectbox(
+        "Horizon",
+        list(horizon_reverse.keys()),
+        index=default_horizon_index
+    )
     selected_horizon = horizon_reverse[selected_horizon_label]
 
     discount_options = sorted(data["discount_rate"].dropna().unique())
     discount_reverse = {clean_discount_label(x): x for x in discount_options}
 
-    selected_discount_label = st.sidebar.selectbox("Discount Rate", list(discount_reverse.keys()))
+    discount_labels = list(discount_reverse.keys())
+    selected_discount_label = st.sidebar.selectbox(
+        "Discount Rate",
+        discount_labels,
+        index=default_index(list(discount_reverse.values()), 0.02)
+    )
     selected_discount = discount_reverse[selected_discount_label]
 
-    variable_reverse = {VARIABLE_LABELS[v]: v for v in VARIABLES if v in data.columns}
+    selected_variable = None
+    selected_variable_label = None
 
-    selected_variable_label = st.sidebar.selectbox("Variable", list(variable_reverse.keys()))
-    selected_variable = variable_reverse[selected_variable_label]
+    if include_variable:
+        variable_reverse = {VARIABLE_LABELS[v]: v for v in VARIABLES if v in data.columns}
 
-    country_options = ["All Countries"] + sorted(data["country"].dropna().unique())
-
-    default_country = st.session_state.get("selected_country", "All Countries")
-    if default_country not in country_options:
-        default_country = "All Countries"
-
-    selected_country = st.sidebar.selectbox(
-        "Country",
-        country_options,
-        index=country_options.index(default_country),
-        help="Start typing to search for a country."
-    )
-
-    st.session_state.selected_country = selected_country
+        selected_variable_label = st.sidebar.selectbox(
+            "Variable",
+            list(variable_reverse.keys()),
+            index=list(variable_reverse.keys()).index("Carbon Burden / Market Value")
+            if "Carbon Burden / Market Value" in variable_reverse.keys()
+            else 0
+        )
+        selected_variable = variable_reverse[selected_variable_label]
 
     filtered = data[
         (data["model"] == selected_model) &
@@ -416,9 +674,6 @@ def show_filters(data):
         (data["discount_rate"] == selected_discount)
     ].copy()
 
-    if selected_country != "All Countries":
-        filtered = filtered[filtered["country"] == selected_country].copy()
-
     return (
         filtered,
         selected_model_label,
@@ -426,37 +681,14 @@ def show_filters(data):
         selected_horizon_label,
         selected_discount_label,
         selected_variable,
-        selected_variable_label,
-        selected_country
+        selected_variable_label
     )
-
 
 # =============================================================================
 # Home
 # =============================================================================
 
 if st.session_state.page == "Home":
-
-    def get_home_ratio_values(data, scenario):
-        temp = data.copy()
-
-        temp = temp[
-            (temp["region"] == "World") &
-            (temp["scenario"] == scenario) &
-            (temp["discount_rate"].astype(float).round(4) == 0.02)
-        ].copy()
-
-        if "all_future_years" in temp["horizon_label"].astype(str).unique():
-            temp = temp[temp["horizon_label"].astype(str) == "all_future_years"].copy()
-
-        temp = temp.sort_values("model")
-
-        return temp["cb_mkt_value"].tolist()
-
-    def format_percentage(x):
-        if pd.isna(x):
-            return "N/A"
-        return f"{x * 100:,.2f}%"
 
     cp_values = sorted(get_home_ratio_values(df, "CP"), reverse=True)
     b2c_values = sorted(get_home_ratio_values(df, "B2C"), reverse=True)
@@ -467,114 +699,9 @@ if st.session_state.page == "Home":
     b2c_low = format_percentage(min(b2c_values)) if b2c_values else "N/A"
     b2c_high = format_percentage(max(b2c_values)) if b2c_values else "N/A"
 
-    st.markdown(
-        """
-        <style>
-        .home-subtitle-clean {
-            max-width: 950px;
-            margin: auto;
-            text-align: center;
-            font-size: 24px;
-            line-height: 1.55;
-            color: #4d4d55;
-            margin-bottom: 15px;
-        }
-
-        .scenario-wrapper {
-            max-width: 1100px;
-            margin: auto;
-            margin-top: 6px;
-            margin-bottom: 30px;
-        }
-
-        .scenario-card {
-            border: 1px solid #ddd9db;
-            border-radius: 22px;
-            padding: 42px 20px 38px 20px;
-            background-color: #fcfcfc;
-            box-shadow: 0 12px 30px rgba(20,20,30,0.04);
-            text-align: center;
-            height: 100%;
-        }
-
-        .scenario-title {
-            font-size: 18px;
-            letter-spacing: 1.8px;
-            font-weight: 700;
-            color: #7b2431;
-            margin-bottom: 26px;
-            text-transform: uppercase;
-        }
-
-        .scenario-range {
-            font-size: 42px;
-            font-weight: 700;
-            color: #252634;
-            line-height: 1.25;
-            margin-bottom: 16px;
-        }
-
-        .scenario-note {
-            font-size: 18px;
-            color: #666666;
-            font-style: italic;
-        }
-
-        .continue-button button {
-            width: 220px !important;
-            height: 64px !important;
-            font-size: 22px !important;
-            border-radius: 999px !important;
-            background: #7b2431 !important;
-            color: white !important;
-            border: 1px solid #7b2431 !important;
-        }
-
-        .continue-button button:hover {
-            background: #5f1b26 !important;
-            color: white !important;
-        }
-
-        .home-menu-subtitle {
-            max-width: 950px;
-            margin: auto;
-            text-align: center;
-            font-size: 24px;
-            line-height: 1.55;
-            color: #4d4d55;
-            margin-top: 12px;
-            margin-bottom: 62px;
-        }
-
-        .home-menu-card button {
-            height: 118px !important;
-            font-size: 26px !important;
-            font-weight: 700 !important;
-            border-radius: 24px !important;
-            background: #fcfcfc !important;
-            border: 1px solid #ddd9db !important;
-            color: #252634 !important;
-            box-shadow: 0 12px 30px rgba(20,20,30,0.045) !important;
-            transition: all 0.2s ease !important;
-        }
-
-        .home-menu-card button:hover {
-            background: #f4eef0 !important;
-            border-color: #7b2431 !important;
-            color: #7b2431 !important;
-            transform: translateY(-2px);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
     if st.session_state.home_stage == "Intro":
 
-        st.markdown(
-            '<div class="main-title">Global Carbon Burden</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
 
         st.markdown(
             """
@@ -620,31 +747,85 @@ if st.session_state.page == "Home":
 
         with col2:
             st.markdown('<div class="continue-button">', unsafe_allow_html=True)
-            if st.button("Continue →", key="continue_button"):
+            if st.button("Continue →", key="continue_to_composition"):
+                st.session_state.home_stage = "Composition"
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    elif st.session_state.home_stage == "Composition":
+
+        st.markdown('<div class="page-title">Global Composition</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="section-note">
+            The charts below show how global carbon burden and corporate market value are distributed across corrected territorial units.
+            The baseline uses Current Policies, a 2% discount rate, all future years, and averages across NGFS downscaling models.
+            EU24 is treated as a single block, while Luxembourg, the Netherlands and Ireland remain separate countries.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        baseline = get_composition_baseline(global_view_df, scenario="CP")
+
+        pie_cb = make_pie_data(baseline, "carbon_burden", top_n=10)
+        pie_mv = make_pie_data(baseline, "mkt_value", top_n=10)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            fig_cb = px.pie(
+                pie_cb,
+                names="display_unit",
+                values="carbon_burden",
+                title="Share of Global Carbon Burden",
+                hole=0.35
+            )
+            fig_cb.update_traces(textposition="inside", textinfo="percent+label")
+            fig_cb.update_layout(
+                font=dict(family="Georgia, Times New Roman, serif"),
+                height=560
+            )
+            st.plotly_chart(fig_cb, use_container_width=True)
+
+        with col2:
+            fig_mv = px.pie(
+                pie_mv,
+                names="display_unit",
+                values="mkt_value",
+                title="Share of Global Corporate Market Value",
+                hole=0.35
+            )
+            fig_mv.update_traces(textposition="inside", textinfo="percent+label")
+            fig_mv.update_layout(
+                font=dict(family="Georgia, Times New Roman, serif"),
+                height=560
+            )
+            st.plotly_chart(fig_mv, use_container_width=True)
+
+        col1, col2 = st.columns([5.3, 1.2])
+
+        with col2:
+            st.markdown('<div class="continue-button">', unsafe_allow_html=True)
+            if st.button("Continue →", key="continue_to_menu"):
                 st.session_state.home_stage = "Menu"
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
     else:
 
-        st.markdown(
-            '<div class="main-title">Global Carbon Burden</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="main-title">Global Carbon Burden</div>', unsafe_allow_html=True)
 
         st.markdown(
             """
             <div class="home-menu-subtitle">
-            Explore the methodology, compare countries on the global map,
-            or examine the full world ranking.
+            Explore the methodology or examine aggregate results across corrected territorial units.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        col_left, col_mid_left, col_mid, col_mid_right, col_right = st.columns(
-            [0.8, 1.45, 1.45, 1.45, 0.8]
-        )
+        col_left, col_mid_left, col_mid_right, col_right = st.columns([1.0, 1.6, 1.6, 1.0])
 
         with col_mid_left:
             st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
@@ -653,17 +834,11 @@ if st.session_state.page == "Home":
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        with col_mid:
-            st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
-            if st.button("Map", key="home_map"):
-                st.session_state.page = "Map"
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-
         with col_mid_right:
             st.markdown('<div class="home-menu-card">', unsafe_allow_html=True)
-            if st.button("World", key="home_world"):
-                st.session_state.page = "World"
+            if st.button("Results", key="home_results"):
+                st.session_state.page = "Results"
+                st.session_state.results_stage = "Global"
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -736,7 +911,7 @@ elif st.session_state.page == "Methodology":
     st.markdown(
         """
         <div class="note">
-        The dashboard currently combines NGFS Phase 5 emissions projections,
+        The dashboard combines NGFS Phase 5 emissions projections,
         social cost of carbon estimates, projected carbon pricing, and country-level
         corporate market value data. Monetary values are expressed in 2023 U.S. dollars.
         </div>
@@ -745,159 +920,327 @@ elif st.session_state.page == "Methodology":
     )
 
 # =============================================================================
-# Map
+# Results
 # =============================================================================
 
-elif st.session_state.page == "Map":
+elif st.session_state.page == "Results":
 
     navigation_bar()
 
-    st.markdown('<div class="page-title">Carbon Burden World Map</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-note">Monetary values are expressed in 2023 U.S. dollars. Ratio variables are shown as percentages of corporate market value. Click on a country to open its table entry.</div>',
-        unsafe_allow_html=True
-    )
-
-    (
-        filtered_df,
-        selected_model,
-        selected_scenario,
-        selected_horizon,
-        selected_discount,
-        selected_variable,
-        selected_variable_label,
-        selected_country
-    ) = show_filters(df_map)
-
-    plot_df = filtered_df.copy()
-
-    if is_percentage_variable(selected_variable):
-        plot_df[selected_variable] = plot_df[selected_variable] * 100
-        colorbar_title = "%"
-        hover_suffix = "%"
-    elif selected_variable in ["carbon_burden", "carbon_burden_net", "tax_burden_reduction", "mkt_value"]:
-        plot_df[selected_variable] = plot_df[selected_variable] / 1e12
-        colorbar_title = "Trillion 2023 USD"
-        hover_suffix = " trillion 2023 USD"
-    else:
-        colorbar_title = selected_variable_label
-        hover_suffix = ""
-
-    fig = px.choropleth(
-        plot_df,
-        locations="region",
-        color=selected_variable,
-        hover_name="country",
-        locationmode="ISO-3",
-        color_continuous_scale="RdYlBu_r",
-        title=f"{selected_variable_label} | {selected_model} | {selected_scenario} | {selected_horizon}"
-    )
-
-    fig.update_traces(
-        hovertemplate="<b>%{hovertext}</b><br>"
-        + selected_variable_label
-        + ": %{z:.2f}"
-        + hover_suffix
-        + "<extra></extra>"
-    )
-
-    fig.update_layout(
-        geo=dict(showframe=False, showcoastlines=True),
-        height=700,
-        font=dict(family="Georgia, Times New Roman, serif"),
-        coloraxis_colorbar=dict(title=colorbar_title),
-        title=dict(font=dict(size=22))
-    )
-
-    event = st.plotly_chart(
-        fig,
-        use_container_width=True,
-        key="carbon_map",
-        on_select="rerun",
-        selection_mode="points"
-    )
-
-    try:
-        selected_points = event["selection"]["points"]
-        if selected_points:
-            clicked_country = selected_points[0]["hovertext"]
-            st.session_state.selected_country = clicked_country
-            st.session_state.page = "World"
+    if st.session_state.results_stage != "Global":
+        if st.button("← Back to global results", key="back_to_global_results"):
+            st.session_state.results_stage = "Global"
+            st.session_state.selected_display_unit = None
             st.rerun()
-    except Exception:
-        pass
 
-# =============================================================================
-# World table
-# =============================================================================
+    if st.session_state.results_stage == "Global":
 
-elif st.session_state.page == "World":
+        st.markdown('<div class="page-title">Aggregate Results</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="section-note">
+            The global map uses corrected territorial units. EU24 is shown as a single block;
+            Luxembourg, the Netherlands and Ireland remain separate countries. Regional blocks are used where country-level ratios are less informative.
+            Click on EU24 to open the European submap. Click on regional blocks to view their internal composition.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    navigation_bar()
+        (
+            filtered_df,
+            selected_model,
+            selected_scenario,
+            selected_horizon,
+            selected_discount,
+            selected_variable,
+            selected_variable_label
+        ) = show_filters(global_map_df)
 
-    st.markdown('<div class="page-title">Carbon Burden World Ranking</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-note">Monetary values are expressed in trillions of 2023 U.S. dollars. Ratio variables are expressed as percentages of corporate market value.</div>',
-        unsafe_allow_html=True
-    )
+        plot_df = filtered_df.copy()
 
-    (
-        filtered_df,
-        selected_model,
-        selected_scenario,
-        selected_horizon,
-        selected_discount,
-        selected_variable,
-        selected_variable_label,
-        selected_country
-    ) = show_filters(df)
+        plot_df, colorbar_title, hover_suffix = prepare_plot_values(plot_df, selected_variable)
 
-    table_df = filtered_df.copy()
+        fig = px.choropleth(
+            plot_df,
+            locations="region",
+            color=selected_variable,
+            hover_name="display_unit",
+            locationmode="ISO-3",
+            color_continuous_scale="RdYlBu_r",
+            custom_data=["display_unit", "view_type"],
+            title=f"{selected_variable_label} | {selected_model} | {selected_scenario} | {selected_horizon}"
+        )
 
-    with st.expander("Search country in table", expanded=False):
-        search_country = st.text_input("Type a country name", "")
-        if search_country.strip():
-            table_df = table_df[
-                table_df["country"].str.contains(search_country.strip(), case=False, na=False)
-            ].copy()
+        fig.update_traces(
+            hovertemplate="<b>%{customdata[0]}</b><br>"
+            + selected_variable_label
+            + ": %{z:.2f}"
+            + hover_suffix
+            + "<extra></extra>"
+        )
 
-    table_df = table_df.sort_values(by=selected_variable, ascending=False).reset_index(drop=True)
-    table_df.insert(0, "Ranking", table_df.index + 1)
+        fig.update_layout(
+            geo=dict(showframe=False, showcoastlines=True),
+            height=700,
+            font=dict(family="Georgia, Times New Roman, serif"),
+            coloraxis_colorbar=dict(title=colorbar_title),
+            title=dict(font=dict(size=22))
+        )
 
-    keep_cols = [
-        "Ranking",
-        "country",
-        "carbon_burden",
-        "carbon_burden_net",
-        "tax_burden_reduction",
-        "mkt_value",
-        "cb_mkt_value",
-        "cb_net_mkt_value"
-    ]
+        event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="global_results_map",
+            on_select="rerun",
+            selection_mode="points"
+        )
 
-    keep_cols = [c for c in keep_cols if c in table_df.columns]
-    table_df = table_df[keep_cols].copy()
+        try:
+            selected_points = event["selection"]["points"]
+            if selected_points:
+                clicked_unit = selected_points[0]["customdata"][0]
+                clicked_type = selected_points[0]["customdata"][1]
 
-    table_df = table_df.rename(columns={
-        "country": "Country",
-        "carbon_burden": "Carbon Burden",
-        "carbon_burden_net": "Net Carbon Burden",
-        "tax_burden_reduction": "Tax Burden Reduction",
-        "mkt_value": "Market Value",
-        "cb_mkt_value": "Carbon Burden / Market Value",
-        "cb_net_mkt_value": "Net Carbon Burden / Market Value"
-    })
+                st.session_state.selected_display_unit = clicked_unit
 
-    for col in ["Carbon Burden", "Net Carbon Burden", "Tax Burden Reduction", "Market Value"]:
-        if col in table_df.columns:
-            table_df[col] = table_df[col].apply(lambda x: f"${x / 1e12:,.2f}T" if pd.notna(x) else "")
+                if clicked_type == "eu_submap":
+                    st.session_state.results_stage = "EU24"
+                elif clicked_type == "regional_pies":
+                    st.session_state.results_stage = "Regional"
+                else:
+                    st.session_state.results_stage = "Country"
 
-    for col in ["Carbon Burden / Market Value", "Net Carbon Burden / Market Value"]:
-        if col in table_df.columns:
-            table_df[col] = table_df[col].apply(lambda x: f"{x * 100:,.2f}%" if pd.notna(x) else "")
+                st.rerun()
+        except Exception:
+            pass
 
-    st.dataframe(table_df, use_container_width=True, hide_index=True)
+        st.markdown("### Ranking")
 
+        ranking_df = (
+            filtered_df
+            .drop_duplicates(subset=["display_unit"])
+            .copy()
+        )
 
+        ranking_df = ranking_df.sort_values(selected_variable, ascending=False).reset_index(drop=True)
+        ranking_df.insert(0, "Ranking", ranking_df.index + 1)
 
+        ranking_df = ranking_df[[
+            "Ranking",
+            "display_unit",
+            "carbon_burden",
+            "carbon_burden_net",
+            "tax_burden_reduction",
+            "mkt_value",
+            "cb_mkt_value",
+            "cb_net_mkt_value"
+        ]].rename(columns={
+            "display_unit": "Territory",
+            "carbon_burden": "Carbon Burden",
+            "carbon_burden_net": "Net Carbon Burden",
+            "tax_burden_reduction": "Tax Burden Reduction",
+            "mkt_value": "Market Value",
+            "cb_mkt_value": "Carbon Burden / Market Value",
+            "cb_net_mkt_value": "Net Carbon Burden / Market Value"
+        })
 
+        st.dataframe(
+            ranking_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
+                "Net Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
+                "Tax Burden Reduction": st.column_config.NumberColumn(format="$%.2e"),
+                "Market Value": st.column_config.NumberColumn(format="$%.2e"),
+                "Carbon Burden / Market Value": st.column_config.NumberColumn(format="%.2%"),
+                "Net Carbon Burden / Market Value": st.column_config.NumberColumn(format="%.2%")
+            }
+        )
+
+    elif st.session_state.results_stage == "EU24":
+
+        st.markdown('<div class="page-title">EU24 Detail</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="section-note">
+            This submap decomposes the EU24 aggregate into member countries.
+            Luxembourg, the Netherlands and Ireland are not included in EU24 and remain separate countries in the global layer.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        (
+            filtered_df,
+            selected_model,
+            selected_scenario,
+            selected_horizon,
+            selected_discount,
+            selected_variable,
+            selected_variable_label
+        ) = show_filters(eu_detail_df)
+
+        plot_df = filtered_df.copy()
+        plot_df, colorbar_title, hover_suffix = prepare_plot_values(plot_df, selected_variable)
+
+        fig = px.choropleth(
+            plot_df,
+            locations="region",
+            color=selected_variable,
+            hover_name="country",
+            locationmode="ISO-3",
+            color_continuous_scale="RdYlBu_r",
+            title=f"EU24 | {selected_variable_label} | {selected_model} | {selected_scenario} | {selected_horizon}"
+        )
+
+        fig.update_traces(
+            hovertemplate="<b>%{hovertext}</b><br>"
+            + selected_variable_label
+            + ": %{z:.2f}"
+            + hover_suffix
+            + "<extra></extra>"
+        )
+
+        fig.update_layout(
+            geo=dict(scope="europe", showframe=False, showcoastlines=True),
+            height=700,
+            font=dict(family="Georgia, Times New Roman, serif"),
+            coloraxis_colorbar=dict(title=colorbar_title),
+            title=dict(font=dict(size=22))
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    elif st.session_state.results_stage == "Regional":
+
+        selected_region = st.session_state.selected_display_unit
+
+        st.markdown(f'<div class="page-title">{selected_region}</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="section-note">
+            For regional blocks, the dashboard shows the internal distribution of carbon burden and market value rather than emphasizing country-level ratios.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        (
+            filtered_df,
+            selected_model,
+            selected_scenario,
+            selected_horizon,
+            selected_discount,
+            selected_variable,
+            selected_variable_label
+        ) = show_filters(regional_detail_df, include_variable=False)
+
+        region_df = filtered_df[
+            filtered_df["display_unit"] == selected_region
+        ].copy()
+
+        pie_cb = make_pie_data(region_df, "carbon_burden", label_col="country", top_n=10)
+        pie_mv = make_pie_data(region_df, "mkt_value", label_col="country", top_n=10)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            fig_cb = px.pie(
+                pie_cb,
+                names="country",
+                values="carbon_burden",
+                title=f"{selected_region}: Share of Carbon Burden",
+                hole=0.35
+            )
+            fig_cb.update_traces(textposition="inside", textinfo="percent+label")
+            fig_cb.update_layout(
+                font=dict(family="Georgia, Times New Roman, serif"),
+                height=560
+            )
+            st.plotly_chart(fig_cb, use_container_width=True)
+
+        with col2:
+            fig_mv = px.pie(
+                pie_mv,
+                names="country",
+                values="mkt_value",
+                title=f"{selected_region}: Share of Market Value",
+                hole=0.35
+            )
+            fig_mv.update_traces(textposition="inside", textinfo="percent+label")
+            fig_mv.update_layout(
+                font=dict(family="Georgia, Times New Roman, serif"),
+                height=560
+            )
+            st.plotly_chart(fig_mv, use_container_width=True)
+
+        table_df = region_df.sort_values("carbon_burden", ascending=False).copy()
+        table_df = table_df[[
+            "country",
+            "carbon_burden",
+            "carbon_burden_net",
+            "tax_burden_reduction",
+            "mkt_value"
+        ]].rename(columns={
+            "country": "Country",
+            "carbon_burden": "Carbon Burden",
+            "carbon_burden_net": "Net Carbon Burden",
+            "tax_burden_reduction": "Tax Burden Reduction",
+            "mkt_value": "Market Value"
+        })
+
+        st.markdown("### Regional ranking")
+        st.dataframe(
+            table_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
+                "Net Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
+                "Tax Burden Reduction": st.column_config.NumberColumn(format="$%.2e"),
+                "Market Value": st.column_config.NumberColumn(format="$%.2e")
+            }
+        )
+
+    elif st.session_state.results_stage == "Country":
+
+        selected_country = st.session_state.selected_display_unit
+
+        st.markdown(f'<div class="page-title">{selected_country}</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="section-note">
+            This country-level page is reserved for the firm-level extension. For now, it reports aggregate country values.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        (
+            filtered_df,
+            selected_model,
+            selected_scenario,
+            selected_horizon,
+            selected_discount,
+            selected_variable,
+            selected_variable_label
+        ) = show_filters(global_view_df)
+
+        country_df = filtered_df[
+            filtered_df["display_unit"] == selected_country
+        ].copy()
+
+        if country_df.empty:
+            st.warning("No data available for this territory under the selected filters.")
+        else:
+            row = country_df.iloc[0]
+
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric("Carbon Burden", format_trillion(row["carbon_burden"]))
+            col2.metric("Market Value", format_trillion(row["mkt_value"]))
+            col3.metric("CB / Market Value", format_percentage(row["cb_mkt_value"]))
+
+            st.markdown("Firm-level results will be linked here once the firm dataset is integrated.")
