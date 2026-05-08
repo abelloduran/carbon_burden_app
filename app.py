@@ -1085,7 +1085,6 @@ def render_firm_density_panel(
         .head(50)
         [[
             "IssuerName",
-            "Ticker",
             "country_name",
             "carbon_burden",
             "market_cap",
@@ -1093,7 +1092,6 @@ def render_firm_density_panel(
         ]]
         .rename(columns={
             "IssuerName": "Firm",
-            "Ticker": "Ticker",
             "country_name": "Country",
             "carbon_burden": "Carbon Burden",
             "market_cap": "Market Cap",
@@ -1120,7 +1118,6 @@ def render_firm_density_panel(
         .head(50)
         [[
             "IssuerName",
-            "Ticker",
             "country_name",
             "carbon_burden",
             "market_cap",
@@ -1128,7 +1125,6 @@ def render_firm_density_panel(
         ]]
         .rename(columns={
             "IssuerName": "Firm",
-            "Ticker": "Ticker",
             "country_name": "Country",
             "carbon_burden": "Carbon Burden",
             "market_cap": "Market Cap",
