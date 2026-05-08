@@ -18,8 +18,9 @@ st.set_page_config(page_title="Global Carbon Burden", layout="wide")
 def load_aggregate_data():
     return pd.read_csv("cb_dataset_final.csv")
 
+
 @st.cache_data(show_spinner="Loading firm-level data...")
-def load_firm_data():
+def load_firm_data_raw():
     firm_parts = [
         pd.read_parquet("cb_mkt_firm_app_part1.parquet"),
         pd.read_parquet("cb_mkt_firm_app_part2.parquet"),
@@ -27,8 +28,8 @@ def load_firm_data():
     ]
     return pd.concat(firm_parts, ignore_index=True)
 
+
 df = load_aggregate_data()
-cb_mkt_firm_app = load_firm_data()
 
 # =============================================================================
 # Standardize names
@@ -106,6 +107,11 @@ VARIABLE_LABELS = {
 
 VARIABLES = list(VARIABLE_LABELS.keys())
 
+FIRM_ALLOWED_PATHWAYS = [
+    "Target", "Benchmark", "Historical",
+    "NGFSRMCP", "NGFSRMNDC", "NGFSRMB2C", "NGFSRMNZ"
+]
+
 # =============================================================================
 # Territorial classification
 # =============================================================================
@@ -157,6 +163,7 @@ EXCLUDE_REGIONS = [
     "World", "EU27", "OECD", "Downscaling|Countries without IEA statistics"
 ]
 
+
 def assign_display_unit(region, country):
     if region in EXCLUDE_REGIONS:
         return None
@@ -178,6 +185,7 @@ def assign_display_unit(region, country):
         return "Rest of Europe"
     return "Rest of World"
 
+
 def assign_map_display_unit(region, country):
     if region in EXCLUDE_REGIONS or region == "EU24":
         return None
@@ -185,22 +193,6 @@ def assign_map_display_unit(region, country):
         return "EU24"
     return assign_display_unit(region, country)
 
-def assign_firm_display_unit(country_iso3, country_name):
-    if country_iso3 in EU24_MEMBERS:
-        return "EU24"
-    if country_iso3 in STANDALONE_COUNTRIES:
-        return country_name
-    if country_iso3 in LATIN_AMERICA:
-        return "Latin America"
-    if country_iso3 in AFRICA:
-        return "Africa"
-    if country_iso3 in MIDDLE_EAST:
-        return "Middle East"
-    if country_iso3 in REST_OF_ASIA:
-        return "Rest of Asia"
-    if country_iso3 in REST_OF_EUROPE:
-        return "Rest of Europe"
-    return "Rest of World"
 
 def assign_view_type(display_unit):
     if display_unit == "EU24":
@@ -211,6 +203,25 @@ def assign_view_type(display_unit):
     ]:
         return "regional_pies"
     return "country"
+
+
+def assign_firm_display_units_vectorized(data):
+    data = data.copy()
+
+    data["display_unit"] = "Rest of World"
+
+    data.loc[data["country_iso3"].isin(EU24_MEMBERS), "display_unit"] = "EU24"
+    data.loc[data["country_iso3"].isin(LATIN_AMERICA), "display_unit"] = "Latin America"
+    data.loc[data["country_iso3"].isin(AFRICA), "display_unit"] = "Africa"
+    data.loc[data["country_iso3"].isin(MIDDLE_EAST), "display_unit"] = "Middle East"
+    data.loc[data["country_iso3"].isin(REST_OF_ASIA), "display_unit"] = "Rest of Asia"
+    data.loc[data["country_iso3"].isin(REST_OF_EUROPE), "display_unit"] = "Rest of Europe"
+
+    standalone_mask = data["country_iso3"].isin(STANDALONE_COUNTRIES)
+    data.loc[standalone_mask, "display_unit"] = data.loc[standalone_mask, "country_name"]
+
+    return data
+
 
 # =============================================================================
 # Aggregate data construction
@@ -295,27 +306,24 @@ regional_detail_df = regional_detail_df[
 ].copy()
 
 # =============================================================================
-# Firm-level data construction
+# Firm-level lazy construction
 # =============================================================================
 
-cb_mkt_firm_app["display_unit"] = cb_mkt_firm_app.apply(
-    lambda x: assign_firm_display_unit(x["country_iso3"], x["country_name"]),
-    axis=1
-)
+@st.cache_data(show_spinner="Preparing firm-level data...")
+def get_firm_df():
+    data = load_firm_data_raw()
 
-cb_mkt_firm_app["pathway"] = cb_mkt_firm_app["pathway"].astype(str)
-cb_mkt_firm_app["scope"] = cb_mkt_firm_app["scope"].astype(str)
-cb_mkt_firm_app["horizon_label"] = cb_mkt_firm_app["horizon_label"].astype(str)
-cb_mkt_firm_app["discount_rate"] = cb_mkt_firm_app["discount_rate"].astype(float)
+    data["pathway"] = data["pathway"].astype(str)
+    data["scope"] = data["scope"].astype(str)
+    data["horizon_label"] = data["horizon_label"].astype(str)
+    data["discount_rate"] = data["discount_rate"].astype(float)
+    data["country_iso3"] = data["country_iso3"].astype(str)
+    data["country_name"] = data["country_name"].astype(str)
 
-FIRM_ALLOWED_PATHWAYS = [
-    "Target", "Benchmark", "Historical",
-    "NGFSRMCP", "NGFSRMNDC", "NGFSRMB2C", "NGFSRMNZ"
-]
+    data = data[data["pathway"].isin(FIRM_ALLOWED_PATHWAYS)].copy()
+    data = assign_firm_display_units_vectorized(data)
 
-firm_df = cb_mkt_firm_app[
-    cb_mkt_firm_app["pathway"].isin(FIRM_ALLOWED_PATHWAYS)
-].copy()
+    return data
 
 # =============================================================================
 # Helper functions
@@ -329,27 +337,33 @@ def clean_horizon_label(x):
         return "To " + x.replace("to_", "")
     return x.replace("_", " ").title()
 
+
 def clean_discount_label(x):
     try:
         return f"{float(x) * 100:.1f}%"
     except Exception:
         return str(x)
 
+
 def clean_model_label(x):
     return str(x).replace("_", " ").title()
 
+
 def is_percentage_variable(variable):
     return variable in ["cb_mkt_value", "cb_net_mkt_value"]
+
 
 def format_percentage(x):
     if pd.isna(x):
         return "N/A"
     return f"{x * 100:,.2f}%"
 
+
 def format_trillion(x):
     if pd.isna(x):
         return "N/A"
     return f"${x / 1e12:,.2f}T"
+
 
 def default_index(options, target):
     for i, x in enumerate(options):
@@ -360,6 +374,7 @@ def default_index(options, target):
             if str(x) == str(target):
                 return i
     return 0
+
 
 def get_home_ratio_values(data, scenario):
     temp = data.copy()
@@ -375,20 +390,6 @@ def get_home_ratio_values(data, scenario):
     temp = temp.sort_values("model")
     return temp["cb_mkt_value"].tolist()
 
-def get_firm_home_ratio(data, pathway, scope="s123", horizon="all_future_years", discount_rate=0.02):
-    temp = data[
-        (data["pathway"] == pathway) &
-        (data["scope"] == scope) &
-        (data["horizon_label"] == horizon) &
-        (data["discount_rate"].round(4) == round(discount_rate, 4))
-    ].copy()
-
-    temp = temp.drop_duplicates(subset=["ISIN"])
-
-    if temp.empty or temp["market_cap"].sum() == 0:
-        return np.nan
-
-    return temp["carbon_burden"].sum() / temp["market_cap"].sum()
 
 def make_pie_data(data, value_col, label_col="display_unit", top_n=10):
     temp = data[[label_col, value_col]].dropna().copy()
@@ -412,6 +413,7 @@ def make_pie_data(data, value_col, label_col="display_unit", top_n=10):
 
     return temp
 
+
 def get_composition_baseline(data, scenario="CP"):
     temp = data[
         (data["scenario"] == scenario) &
@@ -428,6 +430,7 @@ def get_composition_baseline(data, scenario="CP"):
     )
 
     return temp
+
 
 def prepare_plot_values(plot_df, selected_variable):
     plot_df = plot_df.copy()
@@ -446,6 +449,7 @@ def prepare_plot_values(plot_df, selected_variable):
 
     return plot_df, colorbar_title, hover_suffix
 
+
 def smooth_density(values, bins=80):
     values = pd.Series(values).replace([np.inf, -np.inf], np.nan).dropna().astype(float)
 
@@ -459,13 +463,14 @@ def smooth_density(values, bins=80):
     kernel = kernel / kernel.sum()
 
     smooth = np.convolve(counts, kernel, mode="same")
-
     return centers, smooth
+
 
 def filter_firms_for_territory(data, territory):
     if territory is None or territory == "World":
-        return data.copy()
-    return data[data["display_unit"] == territory].copy()
+        return data
+    return data[data["display_unit"] == territory]
+
 
 def get_unique_firm_rows(data):
     return data.drop_duplicates(subset=["ISIN"]).copy()
@@ -843,6 +848,7 @@ def show_aggregate_filters(data, include_variable=True, key_prefix="agg"):
         selected_variable_label
     )
 
+
 def show_firm_filters(key_prefix="firm"):
     st.sidebar.markdown("---")
     st.sidebar.markdown("## Firm-level controls")
@@ -872,17 +878,13 @@ def show_firm_filters(key_prefix="firm"):
         FIRM_PATHWAY_LABELS[p]: p for p in pathway_options
     }[selected_pathway_label]
 
-    horizon_options = sorted(firm_df["horizon_label"].dropna().unique())
+    horizon_options = ["all_future_years", "to_2080", "to_2060"]
     horizon_reverse = {clean_horizon_label(x): x for x in horizon_options}
-
-    default_horizon_index = 0
-    if "All Future Years" in horizon_reverse.keys():
-        default_horizon_index = list(horizon_reverse.keys()).index("All Future Years")
 
     selected_horizon_label = st.sidebar.selectbox(
         "Firm-level horizon",
         list(horizon_reverse.keys()),
-        index=default_horizon_index,
+        index=0,
         key=f"{key_prefix}_horizon"
     )
 
@@ -919,7 +921,7 @@ def render_firm_density_panel(
     base = base[
         (base["pathway"] == selected_pathway) &
         (base["horizon_label"] == selected_horizon)
-    ].copy()
+    ]
 
     st.markdown(
         f"""
@@ -947,10 +949,10 @@ def render_firm_density_panel(
         with col:
             fig = go.Figure()
 
-            scope_base = base[base["scope"] == scope].copy()
+            scope_base = base[base["scope"] == scope]
 
             for dr in FIRM_DISCOUNT_ORDER:
-                temp = scope_base[scope_base["discount_rate"].round(4) == round(dr, 4)].copy()
+                temp = scope_base[scope_base["discount_rate"].round(4) == round(dr, 4)]
                 temp = get_unique_firm_rows(temp)
 
                 x, y = smooth_density(temp["log_cb_market_cap"], bins=90)
@@ -968,7 +970,7 @@ def render_firm_density_panel(
 
             baseline = scope_base[
                 scope_base["discount_rate"].round(4) == 0.020
-            ].copy()
+            ]
 
             baseline = get_unique_firm_rows(baseline)
             n_firms = baseline["ISIN"].nunique()
@@ -1012,12 +1014,12 @@ def render_firm_density_panel(
                 margin=dict(l=20, r=20, t=60, b=80)
             )
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     table_base = base[
         (base["scope"] == "s123") &
         (base["discount_rate"].round(4) == 0.020)
-    ].copy()
+    ]
 
     table_base = get_unique_firm_rows(table_base)
 
@@ -1065,7 +1067,7 @@ def render_firm_density_panel(
             )
             fig_firms.update_traces(textposition="inside", textinfo="percent+label")
             fig_firms.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=520)
-            st.plotly_chart(fig_firms, use_container_width=True)
+            st.plotly_chart(fig_firms, width="stretch")
 
         with c2:
             fig_cb = px.pie(
@@ -1077,7 +1079,7 @@ def render_firm_density_panel(
             )
             fig_cb.update_traces(textposition="inside", textinfo="percent+label")
             fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=520)
-            st.plotly_chart(fig_cb, use_container_width=True)
+            st.plotly_chart(fig_cb, width="stretch")
 
     st.markdown("### Top 50 firms by market cap")
 
@@ -1103,7 +1105,7 @@ def render_firm_density_panel(
 
     st.dataframe(
         top_mkt,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
@@ -1136,7 +1138,7 @@ def render_firm_density_panel(
 
     st.dataframe(
         top_cb,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
@@ -1160,9 +1162,9 @@ if st.session_state.page == "Home":
     b2c_low = format_percentage(min(b2c_values)) if b2c_values else "N/A"
     b2c_high = format_percentage(max(b2c_values)) if b2c_values else "N/A"
 
-    firm_target = format_percentage(get_firm_home_ratio(firm_df, "Target"))
-    firm_cp = format_percentage(get_firm_home_ratio(firm_df, "NGFSRMCP"))
-    firm_nz = format_percentage(get_firm_home_ratio(firm_df, "NGFSRMNZ"))
+    firm_target = "Available in Results"
+    firm_cp = "Available in Results"
+    firm_nz = "Available in Results"
 
     if st.session_state.home_stage == "Intro":
 
@@ -1219,7 +1221,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">ISS Target</div>
-                    <div class="scenario-range">{firm_target}</div>
+                    <div class="scenario-range" style="font-size:26px;">{firm_target}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1231,7 +1233,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">NGFS Current Policies</div>
-                    <div class="scenario-range">{firm_cp}</div>
+                    <div class="scenario-range" style="font-size:26px;">{firm_cp}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1243,7 +1245,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">NGFS Net Zero 2050</div>
-                    <div class="scenario-range">{firm_nz}</div>
+                    <div class="scenario-range" style="font-size:26px;">{firm_nz}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1290,7 +1292,7 @@ if st.session_state.page == "Home":
             )
             fig_cb.update_traces(textposition="inside", textinfo="percent+label")
             fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_cb, use_container_width=True)
+            st.plotly_chart(fig_cb, width="stretch")
 
         with col2:
             fig_mv = px.pie(
@@ -1302,7 +1304,7 @@ if st.session_state.page == "Home":
             )
             fig_mv.update_traces(textposition="inside", textinfo="percent+label")
             fig_mv.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_mv, use_container_width=True)
+            st.plotly_chart(fig_mv, width="stretch")
 
         col1, col2 = st.columns([5.3, 1.2])
 
@@ -1439,7 +1441,6 @@ elif st.session_state.page == "Results":
     if st.session_state.results_stage == "Global":
 
         st.markdown('<div class="page-title">Results</div>', unsafe_allow_html=True)
-
         st.markdown('<div class="sub-page-title">Aggregate Results using Country-Level Data</div>', unsafe_allow_html=True)
 
         st.markdown(
@@ -1502,7 +1503,7 @@ elif st.session_state.page == "Results":
 
         event = st.plotly_chart(
             fig,
-            use_container_width=True,
+            width="stretch",
             key="global_results_map",
             on_select="rerun",
             selection_mode="points"
@@ -1554,7 +1555,7 @@ elif st.session_state.page == "Results":
 
         st.dataframe(
             ranking_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
@@ -1566,6 +1567,7 @@ elif st.session_state.page == "Results":
             }
         )
 
+        firm_df = get_firm_df()
         render_firm_density_panel(
             firm_df,
             "World",
@@ -1578,15 +1580,6 @@ elif st.session_state.page == "Results":
     elif st.session_state.results_stage == "EU24":
 
         st.markdown('<div class="page-title">EU24 Detail</div>', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="section-note">
-            This submap decomposes the EU24 aggregate into member countries.
-            Luxembourg, the Netherlands and Ireland are not included in EU24 and remain separate countries in the global layer.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
         (
             filtered_df,
@@ -1618,14 +1611,6 @@ elif st.session_state.page == "Results":
             title=f"EU24 | {selected_variable_label} | {selected_model} | {selected_scenario} | {selected_horizon}"
         )
 
-        fig.update_traces(
-            hovertemplate="<b>%{hovertext}</b><br>"
-            + selected_variable_label
-            + ": %{z:.2f}"
-            + hover_suffix
-            + "<extra></extra>"
-        )
-
         fig.update_layout(
             geo=dict(scope="europe", showframe=False, showcoastlines=True),
             height=700,
@@ -1634,8 +1619,9 @@ elif st.session_state.page == "Results":
             title=dict(font=dict(size=22))
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
+        firm_df = get_firm_df()
         render_firm_density_panel(
             firm_df,
             "EU24",
@@ -1650,14 +1636,6 @@ elif st.session_state.page == "Results":
         selected_region = st.session_state.selected_display_unit
 
         st.markdown(f'<div class="page-title">{selected_region}</div>', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="section-note">
-            For regional blocks, the dashboard shows the internal distribution of carbon burden and market value rather than emphasizing country-level ratios.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
         (
             filtered_df,
@@ -1695,7 +1673,7 @@ elif st.session_state.page == "Results":
             )
             fig_cb.update_traces(textposition="inside", textinfo="percent+label")
             fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_cb, use_container_width=True)
+            st.plotly_chart(fig_cb, width="stretch")
 
         with col2:
             fig_mv = px.pie(
@@ -1707,8 +1685,9 @@ elif st.session_state.page == "Results":
             )
             fig_mv.update_traces(textposition="inside", textinfo="percent+label")
             fig_mv.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_mv, use_container_width=True)
+            st.plotly_chart(fig_mv, width="stretch")
 
+        firm_df = get_firm_df()
         render_firm_density_panel(
             firm_df,
             selected_region,
@@ -1756,6 +1735,7 @@ elif st.session_state.page == "Results":
             col2.metric("Aggregate Market Value", format_trillion(row["mkt_value"]))
             col3.metric("Aggregate CB / Market Value", format_percentage(row["cb_mkt_value"]))
 
+        firm_df = get_firm_df()
         render_firm_density_panel(
             firm_df,
             selected_country,
@@ -1764,6 +1744,4 @@ elif st.session_state.page == "Results":
             firm_horizon,
             firm_horizon_label
         )
-
-
 
