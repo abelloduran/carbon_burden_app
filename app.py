@@ -14,19 +14,21 @@ st.set_page_config(page_title="Global Carbon Burden", layout="wide")
 # Load data
 # =============================================================================
 
-# aggregate level 
+@st.cache_data(show_spinner="Loading aggregate data...")
+def load_aggregate_data():
+    return pd.read_csv("cb_dataset_final.csv")
 
-df = pd.read_csv("cb_dataset_final.csv")
+@st.cache_data(show_spinner="Loading firm-level data...")
+def load_firm_data():
+    firm_parts = [
+        pd.read_parquet("cb_mkt_firm_app_part1.parquet"),
+        pd.read_parquet("cb_mkt_firm_app_part2.parquet"),
+        pd.read_parquet("cb_mkt_firm_app_part3.parquet")
+    ]
+    return pd.concat(firm_parts, ignore_index=True)
 
-# firm level
-
-firm_parts = [
-    pd.read_parquet("cb_mkt_firm_app_part1.parquet"),
-    pd.read_parquet("cb_mkt_firm_app_part2.parquet"),
-    pd.read_parquet("cb_mkt_firm_app_part3.parquet")
-]
-
-cb_mkt_firm_app = pd.concat(firm_parts, ignore_index=True)
+df = load_aggregate_data()
+cb_mkt_firm_app = load_firm_data()
 
 # =============================================================================
 # Standardize names
