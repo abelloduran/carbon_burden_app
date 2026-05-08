@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -70,6 +69,7 @@ FIRM_SCOPE_LABELS = {
 }
 
 FIRM_SCOPE_ORDER = ["s1", "s12", "s123"]
+FIRM_TABLE_SCOPE = "s1"
 FIRM_DISCOUNT_ORDER = [0.015, 0.020, 0.025]
 
 MODEL_EXPLANATION = """
@@ -344,7 +344,7 @@ def get_home_ratio_values(data, scenario):
     return temp["cb_mkt_value"].tolist()
 
 
-def get_firm_home_ratio(summary_data, pathway, scope="s123", horizon="all_future_years", discount_rate=0.02):
+def get_firm_home_ratio(summary_data, pathway, scope="s1", horizon="all_future_years", discount_rate=0.02):
     temp = summary_data[
         (summary_data["display_unit"] == "World") &
         (summary_data["pathway"] == pathway) &
@@ -358,6 +358,45 @@ def get_firm_home_ratio(summary_data, pathway, scope="s123", horizon="all_future
 
     return temp.iloc[0]["cb_market_cap_aggregate"]
 
+
+def render_home_firm_cards(scope, title):
+    firm_target = format_percentage(get_firm_home_ratio(firm_summary, "Target", scope=scope))
+    firm_cp = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMCP", scope=scope))
+    firm_nz = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMNZ", scope=scope))
+
+    st.markdown(
+        f'<div class="sub-page-title" style="text-align:center;">{title}</div>',
+        unsafe_allow_html=True
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown(f"""
+        <div class="scenario-card">
+            <div class="scenario-title">ISS Target</div>
+            <div class="scenario-range">{firm_target}</div>
+            <div class="scenario-note">firm-level CB / market cap</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        <div class="scenario-card">
+            <div class="scenario-title">NGFS Current Policies</div>
+            <div class="scenario-range">{firm_cp}</div>
+            <div class="scenario-note">firm-level CB / market cap</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f"""
+        <div class="scenario-card">
+            <div class="scenario-title">NGFS Net Zero 2050</div>
+            <div class="scenario-range">{firm_nz}</div>
+            <div class="scenario-note">firm-level CB / market cap</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def make_pie_data(data, value_col, label_col="display_unit", top_n=10):
     temp = data[[label_col, value_col]].dropna().copy()
@@ -873,7 +912,7 @@ def render_firm_density_panel(
         Densities show the distribution of log(Carbon Burden / Market Cap) across firms for 
         <b>{selected_pathway_label}</b>, through <b>{selected_horizon_label}</b>. 
         Each chart compares the three discount rates. The vertical line marks CB / Market Cap = 1.
-        Tables use Scope 1+2+3 and a 2% discount rate.
+        Tables and summary metrics use Scope 1 and a 2% discount rate.
         </div>
         """,
         unsafe_allow_html=True
@@ -953,12 +992,12 @@ def render_firm_density_panel(
                 margin=dict(l=20, r=20, t=60, b=80)
             )
 
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
     summary_row = firm_summary[
         (firm_summary["display_unit"] == territory_label) &
         (firm_summary["pathway"] == selected_pathway) &
-        (firm_summary["scope"] == "s123") &
+        (firm_summary["scope"] == FIRM_TABLE_SCOPE) &
         (firm_summary["horizon_label"] == selected_horizon) &
         (firm_summary["discount_rate"].astype(float).round(4) == 0.020)
     ].copy()
@@ -980,7 +1019,7 @@ def render_firm_density_panel(
     top_mkt = firm_top_market_cap[
         (firm_top_market_cap["display_unit"] == territory_label) &
         (firm_top_market_cap["pathway"] == selected_pathway) &
-        (firm_top_market_cap["scope"] == "s123") &
+        (firm_top_market_cap["scope"] == FIRM_TABLE_SCOPE) &
         (firm_top_market_cap["horizon_label"] == selected_horizon) &
         (firm_top_market_cap["discount_rate"].astype(float).round(4) == 0.020)
     ].copy()
@@ -1005,7 +1044,7 @@ def render_firm_density_panel(
 
     st.dataframe(
         top_mkt,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         column_config={
             "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
@@ -1019,7 +1058,7 @@ def render_firm_density_panel(
     top_cb = firm_top_carbon_burden[
         (firm_top_carbon_burden["display_unit"] == territory_label) &
         (firm_top_carbon_burden["pathway"] == selected_pathway) &
-        (firm_top_carbon_burden["scope"] == "s123") &
+        (firm_top_carbon_burden["scope"] == FIRM_TABLE_SCOPE) &
         (firm_top_carbon_burden["horizon_label"] == selected_horizon) &
         (firm_top_carbon_burden["discount_rate"].astype(float).round(4) == 0.020)
     ].copy()
@@ -1044,7 +1083,7 @@ def render_firm_density_panel(
 
     st.dataframe(
         top_cb,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         column_config={
             "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
@@ -1068,9 +1107,7 @@ if st.session_state.page == "Home":
     b2c_low = format_percentage(min(b2c_values)) if b2c_values else "N/A"
     b2c_high = format_percentage(max(b2c_values)) if b2c_values else "N/A"
 
-    firm_target = format_percentage(get_firm_home_ratio(firm_summary, "Target"))
-    firm_cp = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMCP"))
-    firm_nz = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMNZ"))
+    
 
     if st.session_state.home_stage == "Intro":
 
@@ -1118,45 +1155,9 @@ if st.session_state.page == "Home":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="sub-page-title" style="text-align:center;">Firm-Level Data</div>', unsafe_allow_html=True)
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown(
-                f"""
-                <div class="scenario-card">
-                    <div class="scenario-title">ISS Target</div>
-                    <div class="scenario-range">{firm_target}</div>
-                    <div class="scenario-note">firm-level CB / market cap</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with col2:
-            st.markdown(
-                f"""
-                <div class="scenario-card">
-                    <div class="scenario-title">NGFS Current Policies</div>
-                    <div class="scenario-range">{firm_cp}</div>
-                    <div class="scenario-note">firm-level CB / market cap</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with col3:
-            st.markdown(
-                f"""
-                <div class="scenario-card">
-                    <div class="scenario-title">NGFS Net Zero 2050</div>
-                    <div class="scenario-range">{firm_nz}</div>
-                    <div class="scenario-note">firm-level CB / market cap</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        render_home_firm_cards("s1", "Firm-Level Data — Scope 1")
+        render_home_firm_cards("s12", "Firm-Level Data — Scope 1+2")
+        render_home_firm_cards("s123", "Firm-Level Data — Scope 1+2+3")
 
         col1, col2 = st.columns([5.3, 1.2])
 
@@ -1198,7 +1199,7 @@ if st.session_state.page == "Home":
             )
             fig_cb.update_traces(textposition="inside", textinfo="percent+label")
             fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_cb, width="stretch")
+            st.plotly_chart(fig_cb, use_container_width=True)
 
         with col2:
             fig_mv = px.pie(
@@ -1210,7 +1211,7 @@ if st.session_state.page == "Home":
             )
             fig_mv.update_traces(textposition="inside", textinfo="percent+label")
             fig_mv.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_mv, width="stretch")
+            st.plotly_chart(fig_mv, use_container_width=True)
 
         col1, col2 = st.columns([5.3, 1.2])
 
@@ -1409,7 +1410,7 @@ elif st.session_state.page == "Results":
 
         event = st.plotly_chart(
             fig,
-            width="stretch",
+            use_container_width=True,
             key="global_results_map",
             on_select="rerun",
             selection_mode="points"
@@ -1459,18 +1460,30 @@ elif st.session_state.page == "Results":
             "cb_net_mkt_value": "Net Carbon Burden / Market Value"
         })
 
+        money_cols = [
+            "Carbon Burden",
+            "Net Carbon Burden",
+            "Tax Burden Reduction",
+            "Market Value"
+        ]
+
+        ratio_cols = [
+            "Carbon Burden / Market Value",
+            "Net Carbon Burden / Market Value"
+        ]
+
+        for col in money_cols:
+            if col in ranking_df.columns:
+                ranking_df[col] = ranking_df[col].apply(lambda x: f"${x:,.2e}" if pd.notna(x) else "")
+        
+        for col in ratio_cols:
+            if col in ranking_df.columns:
+                ranking_df[col] = ranking_df[col].apply(lambda x: f"{x * 100:,.2f}%" if pd.notna(x) else "")
+        
         st.dataframe(
             ranking_df,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
-                "Net Carbon Burden": st.column_config.NumberColumn(format="$%.2e"),
-                "Tax Burden Reduction": st.column_config.NumberColumn(format="$%.2e"),
-                "Market Value": st.column_config.NumberColumn(format="$%.2e"),
-                "Carbon Burden / Market Value": st.column_config.NumberColumn(format="%.2%"),
-                "Net Carbon Burden / Market Value": st.column_config.NumberColumn(format="%.2%")
-            }
+            use_container_width=True,
+            hide_index=True
         )
 
         render_firm_density_panel(
@@ -1523,7 +1536,7 @@ elif st.session_state.page == "Results":
             title=dict(font=dict(size=22))
         )
 
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         render_firm_density_panel(
             "EU24",
@@ -1575,7 +1588,7 @@ elif st.session_state.page == "Results":
             )
             fig_cb.update_traces(textposition="inside", textinfo="percent+label")
             fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_cb, width="stretch")
+            st.plotly_chart(fig_cb, use_container_width=True)
 
         with col2:
             fig_mv = px.pie(
@@ -1587,7 +1600,7 @@ elif st.session_state.page == "Results":
             )
             fig_mv.update_traces(textposition="inside", textinfo="percent+label")
             fig_mv.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
-            st.plotly_chart(fig_mv, width="stretch")
+            st.plotly_chart(fig_mv, use_container_width=True)
 
         render_firm_density_panel(
             selected_region,
