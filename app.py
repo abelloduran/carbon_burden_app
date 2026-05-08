@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -19,21 +20,17 @@ def load_aggregate_data():
     return pd.read_csv("cb_dataset_final.csv")
 
 
-@st.cache_data(show_spinner="Loading firm-level data...")
-def load_firm_data_raw():
-    firm_parts = [
-        pd.read_parquet("cb_mkt_firm_app_part1.parquet"),
-        pd.read_parquet("cb_mkt_firm_app_part2.parquet"),
-        pd.read_parquet("cb_mkt_firm_app_part3.parquet")
-    ]
-    return pd.concat(firm_parts, ignore_index=True)
+@st.cache_data(show_spinner="Loading firm-level app data...")
+def load_firm_app_data():
+    firm_summary = pd.read_parquet("firm_summary.parquet")
+    firm_density_curves = pd.read_parquet("firm_density_curves.parquet")
+    firm_top_market_cap = pd.read_parquet("firm_top_market_cap.parquet")
+    firm_top_carbon_burden = pd.read_parquet("firm_top_carbon_burden.parquet")
+    return firm_summary, firm_density_curves, firm_top_market_cap, firm_top_carbon_burden
 
 
 df = load_aggregate_data()
-
-# =============================================================================
-# Standardize names
-# =============================================================================
+firm_summary, firm_density_curves, firm_top_market_cap, firm_top_carbon_burden = load_firm_app_data()
 
 if "market_value" in df.columns and "mkt_value" not in df.columns:
     df = df.rename(columns={"market_value": "mkt_value"})
@@ -106,11 +103,6 @@ VARIABLE_LABELS = {
 }
 
 VARIABLES = list(VARIABLE_LABELS.keys())
-
-FIRM_ALLOWED_PATHWAYS = [
-    "Target", "Benchmark", "Historical",
-    "NGFSRMCP", "NGFSRMNDC", "NGFSRMB2C", "NGFSRMNZ"
-]
 
 # =============================================================================
 # Territorial classification
@@ -204,27 +196,8 @@ def assign_view_type(display_unit):
         return "regional_pies"
     return "country"
 
-
-def assign_firm_display_units_vectorized(data):
-    data = data.copy()
-
-    data["display_unit"] = "Rest of World"
-
-    data.loc[data["country_iso3"].isin(EU24_MEMBERS), "display_unit"] = "EU24"
-    data.loc[data["country_iso3"].isin(LATIN_AMERICA), "display_unit"] = "Latin America"
-    data.loc[data["country_iso3"].isin(AFRICA), "display_unit"] = "Africa"
-    data.loc[data["country_iso3"].isin(MIDDLE_EAST), "display_unit"] = "Middle East"
-    data.loc[data["country_iso3"].isin(REST_OF_ASIA), "display_unit"] = "Rest of Asia"
-    data.loc[data["country_iso3"].isin(REST_OF_EUROPE), "display_unit"] = "Rest of Europe"
-
-    standalone_mask = data["country_iso3"].isin(STANDALONE_COUNTRIES)
-    data.loc[standalone_mask, "display_unit"] = data.loc[standalone_mask, "country_name"]
-
-    return data
-
-
 # =============================================================================
-# Aggregate data construction
+# Aggregate construction
 # =============================================================================
 
 df["display_unit"] = df.apply(lambda x: assign_display_unit(x["region"], x["country"]), axis=1)
@@ -306,26 +279,6 @@ regional_detail_df = regional_detail_df[
 ].copy()
 
 # =============================================================================
-# Firm-level lazy construction
-# =============================================================================
-
-@st.cache_data(show_spinner="Preparing firm-level data...")
-def get_firm_df():
-    data = load_firm_data_raw()
-
-    data["pathway"] = data["pathway"].astype(str)
-    data["scope"] = data["scope"].astype(str)
-    data["horizon_label"] = data["horizon_label"].astype(str)
-    data["discount_rate"] = data["discount_rate"].astype(float)
-    data["country_iso3"] = data["country_iso3"].astype(str)
-    data["country_name"] = data["country_name"].astype(str)
-
-    data = data[data["pathway"].isin(FIRM_ALLOWED_PATHWAYS)].copy()
-    data = assign_firm_display_units_vectorized(data)
-
-    return data
-
-# =============================================================================
 # Helper functions
 # =============================================================================
 
@@ -391,6 +344,21 @@ def get_home_ratio_values(data, scenario):
     return temp["cb_mkt_value"].tolist()
 
 
+def get_firm_home_ratio(summary_data, pathway, scope="s123", horizon="all_future_years", discount_rate=0.02):
+    temp = summary_data[
+        (summary_data["display_unit"] == "World") &
+        (summary_data["pathway"] == pathway) &
+        (summary_data["scope"] == scope) &
+        (summary_data["horizon_label"] == horizon) &
+        (summary_data["discount_rate"].astype(float).round(4) == round(discount_rate, 4))
+    ].copy()
+
+    if temp.empty:
+        return np.nan
+
+    return temp.iloc[0]["cb_market_cap_aggregate"]
+
+
 def make_pie_data(data, value_col, label_col="display_unit", top_n=10):
     temp = data[[label_col, value_col]].dropna().copy()
     temp = temp.groupby(label_col, as_index=False)[value_col].sum()
@@ -448,32 +416,6 @@ def prepare_plot_values(plot_df, selected_variable):
         hover_suffix = ""
 
     return plot_df, colorbar_title, hover_suffix
-
-
-def smooth_density(values, bins=80):
-    values = pd.Series(values).replace([np.inf, -np.inf], np.nan).dropna().astype(float)
-
-    if len(values) < 5:
-        return None, None
-
-    counts, edges = np.histogram(values, bins=bins, density=True)
-    centers = (edges[:-1] + edges[1:]) / 2
-
-    kernel = np.array([1, 2, 4, 6, 4, 2, 1], dtype=float)
-    kernel = kernel / kernel.sum()
-
-    smooth = np.convolve(counts, kernel, mode="same")
-    return centers, smooth
-
-
-def filter_firms_for_territory(data, territory):
-    if territory is None or territory == "World":
-        return data
-    return data[data["display_unit"] == territory]
-
-
-def get_unique_firm_rows(data):
-    return data.drop_duplicates(subset=["ISIN"]).copy()
 
 # =============================================================================
 # Session state
@@ -904,11 +846,10 @@ def show_firm_filters(key_prefix="firm"):
     return selected_pathway, selected_pathway_label, selected_horizon, selected_horizon_label
 
 # =============================================================================
-# Firm-level charts and tables
+# Firm-level rendering
 # =============================================================================
 
 def render_firm_density_panel(
-    data,
     territory,
     selected_pathway,
     selected_pathway_label,
@@ -916,12 +857,6 @@ def render_firm_density_panel(
     selected_horizon_label
 ):
     territory_label = territory if territory else "World"
-
-    base = filter_firms_for_territory(data, territory_label)
-    base = base[
-        (base["pathway"] == selected_pathway) &
-        (base["horizon_label"] == selected_horizon)
-    ]
 
     st.markdown(
         f"""
@@ -938,6 +873,7 @@ def render_firm_density_panel(
         Densities show the distribution of log(Carbon Burden / Market Cap) across firms for 
         <b>{selected_pathway_label}</b>, through <b>{selected_horizon_label}</b>. 
         Each chart compares the three discount rates. The vertical line marks CB / Market Cap = 1.
+        Tables use Scope 1+2+3 and a 2% discount rate.
         </div>
         """,
         unsafe_allow_html=True
@@ -949,35 +885,39 @@ def render_firm_density_panel(
         with col:
             fig = go.Figure()
 
-            scope_base = base[base["scope"] == scope]
+            plot_base = firm_density_curves[
+                (firm_density_curves["display_unit"] == territory_label) &
+                (firm_density_curves["pathway"] == selected_pathway) &
+                (firm_density_curves["scope"] == scope) &
+                (firm_density_curves["horizon_label"] == selected_horizon)
+            ].copy()
 
             for dr in FIRM_DISCOUNT_ORDER:
-                temp = scope_base[scope_base["discount_rate"].round(4) == round(dr, 4)]
-                temp = get_unique_firm_rows(temp)
+                temp = plot_base[
+                    plot_base["discount_rate"].astype(float).round(4) == round(dr, 4)
+                ].copy()
 
-                x, y = smooth_density(temp["log_cb_market_cap"], bins=90)
-
-                if x is not None:
+                if not temp.empty:
                     fig.add_trace(
                         go.Scatter(
-                            x=x,
-                            y=y,
+                            x=temp["x"],
+                            y=temp["density"],
                             mode="lines",
                             name=clean_discount_label(dr),
                             line=dict(width=2)
                         )
                     )
 
-            baseline = scope_base[
-                scope_base["discount_rate"].round(4) == 0.020
-            ]
+            baseline = plot_base[
+                plot_base["discount_rate"].astype(float).round(4) == 0.020
+            ].copy()
 
-            baseline = get_unique_firm_rows(baseline)
-            n_firms = baseline["ISIN"].nunique()
-            share_above = (
-                (baseline["cb_market_cap"] > 1).mean()
-                if n_firms > 0 else np.nan
-            )
+            if not baseline.empty:
+                n_firms = int(baseline["n_firms"].iloc[0])
+                share_above = float(baseline["share_cb_mkt_above_1"].iloc[0])
+                annotation_text = f"N = {n_firms:,}<br>{share_above * 100:,.1f}% with CB/MktCap > 1"
+            else:
+                annotation_text = "No data"
 
             fig.add_vline(
                 x=0,
@@ -993,8 +933,7 @@ def render_firm_density_panel(
                 yref="paper",
                 showarrow=False,
                 align="right",
-                text=f"N = {n_firms:,}<br>{share_above * 100:,.1f}% with CB/MktCap > 1"
-                if pd.notna(share_above) else f"N = {n_firms:,}",
+                text=annotation_text,
                 font=dict(size=13)
             )
 
@@ -1016,92 +955,53 @@ def render_firm_density_panel(
 
             st.plotly_chart(fig, width="stretch")
 
-    table_base = base[
-        (base["scope"] == "s123") &
-        (base["discount_rate"].round(4) == 0.020)
-    ]
+    summary_row = firm_summary[
+        (firm_summary["display_unit"] == territory_label) &
+        (firm_summary["pathway"] == selected_pathway) &
+        (firm_summary["scope"] == "s123") &
+        (firm_summary["horizon_label"] == selected_horizon) &
+        (firm_summary["discount_rate"].astype(float).round(4) == 0.020)
+    ].copy()
 
-    table_base = get_unique_firm_rows(table_base)
-
-    if table_base.empty:
+    if summary_row.empty:
         st.warning("No firm-level observations available for this selection.")
         return
 
-    total_cb = table_base["carbon_burden"].sum()
-    total_mkt = table_base["market_cap"].sum()
-    aggregate_ratio = total_cb / total_mkt if total_mkt != 0 else np.nan
+    row = summary_row.iloc[0]
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Number of firms", f"{table_base['ISIN'].nunique():,}")
-    m2.metric("Total Carbon Burden", format_trillion(total_cb))
-    m3.metric("Total Market Cap", format_trillion(total_mkt))
-    m4.metric("CB / Market Cap", format_percentage(aggregate_ratio))
-
-    if territory_label in [
-        "EU24", "Latin America", "Africa", "Middle East",
-        "Rest of Asia", "Rest of Europe", "Rest of World", "World"
-    ]:
-        st.markdown("### Firm-level sample composition")
-
-        country_firms = (
-            table_base
-            .groupby("country_name", as_index=False)
-            .agg(
-                n_firms=("ISIN", "nunique"),
-                carbon_burden=("carbon_burden", "sum")
-            )
-        )
-
-        pie_firms = make_pie_data(country_firms, "n_firms", label_col="country_name", top_n=10)
-        pie_cb = make_pie_data(country_firms, "carbon_burden", label_col="country_name", top_n=10)
-
-        c1, c2 = st.columns(2)
-
-        with c1:
-            fig_firms = px.pie(
-                pie_firms,
-                names="country_name",
-                values="n_firms",
-                title="Share of firms by country",
-                hole=0.35
-            )
-            fig_firms.update_traces(textposition="inside", textinfo="percent+label")
-            fig_firms.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=520)
-            st.plotly_chart(fig_firms, width="stretch")
-
-        with c2:
-            fig_cb = px.pie(
-                pie_cb,
-                names="country_name",
-                values="carbon_burden",
-                title="Share of firm-level carbon burden by country",
-                hole=0.35
-            )
-            fig_cb.update_traces(textposition="inside", textinfo="percent+label")
-            fig_cb.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=520)
-            st.plotly_chart(fig_cb, width="stretch")
+    m1.metric("Number of firms", f"{int(row['n_firms']):,}")
+    m2.metric("Total Carbon Burden", format_trillion(row["total_carbon_burden"]))
+    m3.metric("Total Market Cap", format_trillion(row["total_market_cap"]))
+    m4.metric("CB / Market Cap", format_percentage(row["cb_market_cap_aggregate"]))
 
     st.markdown("### Top 50 firms by market cap")
 
-    top_mkt = (
-        table_base
-        .sort_values("market_cap", ascending=False)
-        .head(50)
-        [[
-            "IssuerName",
-            "country_name",
-            "carbon_burden",
-            "market_cap",
-            "cb_market_cap"
-        ]]
-        .rename(columns={
-            "IssuerName": "Firm",
-            "country_name": "Country",
-            "carbon_burden": "Carbon Burden",
-            "market_cap": "Market Cap",
-            "cb_market_cap": "CB / Market Cap"
-        })
-    )
+    top_mkt = firm_top_market_cap[
+        (firm_top_market_cap["display_unit"] == territory_label) &
+        (firm_top_market_cap["pathway"] == selected_pathway) &
+        (firm_top_market_cap["scope"] == "s123") &
+        (firm_top_market_cap["horizon_label"] == selected_horizon) &
+        (firm_top_market_cap["discount_rate"].astype(float).round(4) == 0.020)
+    ].copy()
+
+    top_mkt = top_mkt.rename(columns={
+        "rank": "Rank",
+        "IssuerName": "Firm",
+        "country_name": "Country",
+        "carbon_burden": "Carbon Burden",
+        "market_cap": "Market Cap",
+        "cb_market_cap": "CB / Market Cap"
+    })
+
+    top_mkt = top_mkt[[
+        "Rank",
+        "Firm",
+        "Country",
+        "Carbon Burden",
+        "Market Cap",
+        "CB / Market Cap"
+    ]]
 
     st.dataframe(
         top_mkt,
@@ -1116,25 +1016,31 @@ def render_firm_density_panel(
 
     st.markdown("### Top 50 firms by carbon burden")
 
-    top_cb = (
-        table_base
-        .sort_values("carbon_burden", ascending=False)
-        .head(50)
-        [[
-            "IssuerName",
-            "country_name",
-            "carbon_burden",
-            "market_cap",
-            "cb_market_cap"
-        ]]
-        .rename(columns={
-            "IssuerName": "Firm",
-            "country_name": "Country",
-            "carbon_burden": "Carbon Burden",
-            "market_cap": "Market Cap",
-            "cb_market_cap": "CB / Market Cap"
-        })
-    )
+    top_cb = firm_top_carbon_burden[
+        (firm_top_carbon_burden["display_unit"] == territory_label) &
+        (firm_top_carbon_burden["pathway"] == selected_pathway) &
+        (firm_top_carbon_burden["scope"] == "s123") &
+        (firm_top_carbon_burden["horizon_label"] == selected_horizon) &
+        (firm_top_carbon_burden["discount_rate"].astype(float).round(4) == 0.020)
+    ].copy()
+
+    top_cb = top_cb.rename(columns={
+        "rank": "Rank",
+        "IssuerName": "Firm",
+        "country_name": "Country",
+        "carbon_burden": "Carbon Burden",
+        "market_cap": "Market Cap",
+        "cb_market_cap": "CB / Market Cap"
+    })
+
+    top_cb = top_cb[[
+        "Rank",
+        "Firm",
+        "Country",
+        "Carbon Burden",
+        "Market Cap",
+        "CB / Market Cap"
+    ]]
 
     st.dataframe(
         top_cb,
@@ -1162,9 +1068,9 @@ if st.session_state.page == "Home":
     b2c_low = format_percentage(min(b2c_values)) if b2c_values else "N/A"
     b2c_high = format_percentage(max(b2c_values)) if b2c_values else "N/A"
 
-    firm_target = "Available in Results"
-    firm_cp = "Available in Results"
-    firm_nz = "Available in Results"
+    firm_target = format_percentage(get_firm_home_ratio(firm_summary, "Target"))
+    firm_cp = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMCP"))
+    firm_nz = format_percentage(get_firm_home_ratio(firm_summary, "NGFSRMNZ"))
 
     if st.session_state.home_stage == "Intro":
 
@@ -1221,7 +1127,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">ISS Target</div>
-                    <div class="scenario-range" style="font-size:26px;">{firm_target}</div>
+                    <div class="scenario-range">{firm_target}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1233,7 +1139,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">NGFS Current Policies</div>
-                    <div class="scenario-range" style="font-size:26px;">{firm_cp}</div>
+                    <div class="scenario-range">{firm_cp}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1245,7 +1151,7 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="scenario-card">
                     <div class="scenario-title">NGFS Net Zero 2050</div>
-                    <div class="scenario-range" style="font-size:26px;">{firm_nz}</div>
+                    <div class="scenario-range">{firm_nz}</div>
                     <div class="scenario-note">firm-level CB / market cap</div>
                 </div>
                 """,
@@ -1567,9 +1473,7 @@ elif st.session_state.page == "Results":
             }
         )
 
-        firm_df = get_firm_df()
         render_firm_density_panel(
-            firm_df,
             "World",
             firm_pathway,
             firm_pathway_label,
@@ -1621,9 +1525,7 @@ elif st.session_state.page == "Results":
 
         st.plotly_chart(fig, width="stretch")
 
-        firm_df = get_firm_df()
         render_firm_density_panel(
-            firm_df,
             "EU24",
             firm_pathway,
             firm_pathway_label,
@@ -1687,9 +1589,7 @@ elif st.session_state.page == "Results":
             fig_mv.update_layout(font=dict(family="Georgia, Times New Roman, serif"), height=560)
             st.plotly_chart(fig_mv, width="stretch")
 
-        firm_df = get_firm_df()
         render_firm_density_panel(
-            firm_df,
             selected_region,
             firm_pathway,
             firm_pathway_label,
@@ -1735,13 +1635,10 @@ elif st.session_state.page == "Results":
             col2.metric("Aggregate Market Value", format_trillion(row["mkt_value"]))
             col3.metric("Aggregate CB / Market Value", format_percentage(row["cb_mkt_value"]))
 
-        firm_df = get_firm_df()
         render_firm_density_panel(
-            firm_df,
             selected_country,
             firm_pathway,
             firm_pathway_label,
             firm_horizon,
             firm_horizon_label
         )
-
